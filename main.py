@@ -84,8 +84,7 @@ def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
 DUMMY_VEHICLES = generate_random_vehicles(num_vehicles=5000)
 
 # --- Simulate User Data for Dashboard (for a single dummy user) ---
-# Check if dummy_user_data is already in session state AND if it has the 'loan_applications' key
-# This helps with initial load and updates, but for a guaranteed reset, see the st.session_state.clear() below.
+# This check ensures dummy_user_data is properly initialized or re-initialized if needed.
 if 'dummy_user_data' not in st.session_state or 'loan_applications' not in st.session_state.dummy_user_data:
     st.session_state.dummy_user_data = {
         "name": "Juan Pérez",
@@ -107,12 +106,12 @@ st.set_page_config(layout="wide", page_title="Finanzauto", initial_sidebar_state
 st.title("🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento")
 
 # --- Temporary Reset for Development ---
-# This button helps clear session state during development to prevent KeyErrors
-# from stale data. REMOVE or COMMENT OUT in production!
+# This button helps clear session state during development to prevent stale data issues.
+# REMOVE or COMMENT OUT this block in production to avoid losing user data!
 if st.sidebar.button("Reiniciar Datos de la App (Desarrollo)"):
     st.session_state.clear()
     st.cache_data.clear()
-    st.experimental_rerun() # Rerun the app after clearing state
+    st.rerun() # Corrected: Use st.rerun() instead of st.experimental_rerun()
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Menú Principal")
