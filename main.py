@@ -4,16 +4,19 @@ import random
 import os
 
 # --- Configuration ---
-# IMPORTANT: In a real application, secure your API key using Streamlit secrets.
-# Create a .streamlit/secrets.toml file with: GEMINI_API_KEY="your_api_key_here"
-# Then access it via st.secrets["GEMINI_API_KEY"]
-GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Dummy key. REPLACE THIS!
+# ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
+# EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
+GEMINI_API_KEY = "AIzaSyB4F2fQErtanjQvbWgm4CmD4xxpuSJYX4A" # Tu clave API proporcionada
 
-# Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize the generative model
-model = genai.GenerativeModel('gemini-pro')
+# Initialize the generative model with Gemini 1.5 Flash
+try:
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error(f"❌ **Error al cargar el modelo Gemini 1.5 Flash:** {e}")
+    st.info("Asegúrate de que 'gemini-1.5-flash' esté disponible y que tu clave API sea correcta.")
+    st.stop() # Stop execution if model cannot be loaded
 
 # --- Dummy Data Generation (Dynamic) ---
 @st.cache_data # Cache the generated data to avoid re-generating on every rerun
@@ -84,7 +87,6 @@ def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
 DUMMY_VEHICLES = generate_random_vehicles(num_vehicles=5000)
 
 # --- Simulate User Data for Dashboard (for a single dummy user) ---
-# This check ensures dummy_user_data is properly initialized or re-initialized if needed.
 if 'dummy_user_data' not in st.session_state or 'loan_applications' not in st.session_state.dummy_user_data:
     st.session_state.dummy_user_data = {
         "name": "Juan Pérez",
@@ -106,12 +108,10 @@ st.set_page_config(layout="wide", page_title="Finanzauto", initial_sidebar_state
 st.title("🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento")
 
 # --- Temporary Reset for Development ---
-# This button helps clear session state during development to prevent stale data issues.
-# REMOVE or COMMENT OUT this block in production to avoid losing user data!
 if st.sidebar.button("Reiniciar Datos de la App (Desarrollo)"):
     st.session_state.clear()
     st.cache_data.clear()
-    st.rerun() # Corrected: Use st.rerun() instead of st.experimental_rerun()
+    st.rerun()
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Menú Principal")
@@ -121,12 +121,12 @@ page = st.sidebar.radio("Navegación", [
     "Simulador de Crédito",
     "Solicitud de Crédito",
     "Análisis Preliminar",
-    "Recomendador de Planes", # Renamed
+    "Recomendador de Planes",
     "Catálogo de Vehículos",
     "Comparador",
     "Subastas",
-    "Portal de Clientes", # No login
-    "Portal de Asesores", # No login
+    "Portal de Clientes",
+    "Portal de Asesores",
     "Blog"
 ])
 
@@ -182,14 +182,11 @@ elif page == "Dashboard":
     st.header("📊 Dashboard del Usuario")
     st.info("¡Bienvenido, Juan Pérez! Aquí tienes un resumen de tu actividad en Finanzauto.")
 
-    # Ensure user_data is freshly loaded from session state (or re-initialized)
     user_data = st.session_state.dummy_user_data
 
-    # --- Tabs for Loan Stages ---
     tab_titles = ["Todas las Solicitudes", "En Análisis/Revisión", "Documentos Pendientes", "Aprobadas", "Firmado/Desembolsado", "Rechazadas"]
     tabs = st.tabs(tab_titles)
 
-    # Filter applications by stage for each tab
     applications_by_stage = {
         "Todas las Solicitudes": user_data["loan_applications"],
         "En Análisis/Revisión": [app for app in user_data["loan_applications"] if app.get("stage") == "Análisis Preliminar" or app.get("status") == "En Revisión"],
@@ -206,7 +203,6 @@ elif page == "Dashboard":
             if current_apps:
                 for app in current_apps:
                     status_emoji = "✅" if app.get("status") == "Aprobada" else "⏳" if app.get("status") == "En Revisión" else "❌"
-                    # Using .get() for safety here too, though the dummy data should have these.
                     st.markdown(f"- **Solicitud {app.get('id', 'N/A')}:** Vehículo: {app.get('vehicle', 'N/A')} | Monto: ${app.get('amount', 0):,.2f} | Estado: **{status_emoji} {app.get('status', 'Desconocido')}** | Etapa: _{app.get('stage', 'Desconocida')}_ ({app.get('date', 'N/A')})")
                     if "reason" in app:
                         st.info(f"    *Razón:* {app['reason']}")
@@ -349,7 +345,7 @@ elif page == "Análisis Preliminar":
                 except Exception as e:
                     st.error(f"Lo siento, hubo un error al realizar el análisis. Por favor, inténtalo de nuevo. Error: {e}")
 
-elif page == "Recomendador de Planes": # Renamed page
+elif page == "Recomendador de Planes":
     st.header("💡 Recomendador de Planes Financieros")
     st.info("Cuéntanos sobre tus objetivos y te ayudaremos a encontrar el plan de financiamiento ideal.")
     
@@ -364,7 +360,6 @@ elif page == "Recomendador de Planes": # Renamed page
             
             with st.spinner("Buscando recomendaciones de planes con IA..."):
                 try:
-                    # Define dummy loan plan types for Gemini to consider
                     dummy_loan_plans = [
                         {"name": "Plan Estándar", "description": "Tasa fija, plazos de 3 a 6 años, pagos mensuales consistentes."},
                         {"name": "Plan Flexi-Pago", "description": "Tasa fija, plazos extendidos hasta 7 años, pagos iniciales más bajos con opción de abonos extraordinarios."},
@@ -504,7 +499,6 @@ elif page == "Portal de Clientes":
     st.markdown("---")
 
     st.subheader("Mis Préstamos Actuales")
-    # Filter for approved/active loans
     active_loans = [app for app in user_data["loan_applications"] if app.get("status") == "Aprobada" or app.get("stage") == "Desembolsado" or app.get("stage") == "Firma de Contrato"]
     if active_loans:
         for loan in active_loans:
@@ -512,9 +506,8 @@ elif page == "Portal de Clientes":
             st.write(f"- Monto: ${loan.get('amount', 0):,.2f}")
             st.write(f"- Estado: **{loan.get('status', 'Desconocido')}** / Etapa: **{loan.get('stage', 'Desconocida')}**")
             st.write(f"- Fecha de Aprobación/Inicio: {loan.get('date', 'N/A')}")
-            # Dummy details for a loan
             st.write(f"- Cuota Mensual Estimada: ${random.randint(500,1500):,.2f}")
-            st.write(f"- Saldo Pendiente (Dummy): ${random.randint(5000, loan.get('amount', 50000)-1000):,.2f}") # Ensure amount is not zero
+            st.write(f"- Saldo Pendiente (Dummy): ${random.randint(5000, loan.get('amount', 50000)-1000):,.2f}")
             st.markdown("---")
     else:
         st.write("No tienes préstamos activos en este momento.")
@@ -534,7 +527,6 @@ elif page == "Portal de Asesores":
     st.header("💼 Portal de Asesores")
     st.info("Bienvenido al portal de asesores. Aquí puedes gestionar solicitudes y clientes.")
     
-    # Simulate a list of all applications for advisors to review
     all_applications = st.session_state.dummy_user_data["loan_applications"] + [
         {"id": "ADV001", "vehicle": "Audi Q5 2023", "amount": 55000, "status": "Pendiente", "stage": "Análisis Preliminar", "date": "2025-07-13", "applicant": "María García"},
         {"id": "ADV002", "vehicle": "Volkswagen ID.4 2024", "amount": 42000, "status": "Pendiente", "stage": "Documentación Enviada", "date": "2025-07-11", "applicant": "Pedro Gómez"}
