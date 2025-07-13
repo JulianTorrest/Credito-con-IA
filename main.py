@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # --- Configuration ---
 # ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
 # EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
-GEMINI_API_KEY = "TU_CLAVE_API_AQUI" # ¡IMPORTANTE! Reemplaza esto con tu clave API real
+GEMINI_API_KEY = "AIzaSyB4F2fQErtanjQvbWgm4CmD4xxpuSJYX4A" # ¡IMPORTANTE! Reemplaza esto con tu clave API real
 
 genai.configure(api_key=GEMINI_API_KEY)
 
