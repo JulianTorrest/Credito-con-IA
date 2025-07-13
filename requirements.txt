@@ -1,2 +1,7 @@
 streamlit
 google-generativeai
+PyMuPDF
+langchain-chroma
+langchain-google-genai
+langchain-text-splitters
+python-dotenv
