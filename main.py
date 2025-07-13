@@ -2,15 +2,15 @@ import streamlit as st
 import google.generativeai as genai
 import random
 import os
-import math # Importamos math para cálculos financieros
+import math
 from datetime import datetime, timedelta
 
 # --- Configuration ---
 # ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
 # EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
-GEMINI_API_KEY = "AIzaSyB4F2fQErtanjQvbWgm4CmD4xxpuSJYX4A" # Tu clave API proporcionada
+GEMINI_API_KEY = "AIzaSyB4F2fQErtanjVbWgm4CmD4xxpuSJYX4A" # Tu clave API proporcionada
 
-genai.configure(api_api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize the generative model with Gemini 1.5 Flash
 try:
@@ -21,8 +21,8 @@ except Exception as e:
     st.stop() # Stop execution if model cannot be loaded
 
 # --- Dummy Data Generation (Dynamic) ---
-@st.cache_data # Cache the generated data to avoid re-generating on every rerun
-def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
+@st.cache_data
+def generate_random_vehicles(num_vehicles=5000):
     makes = ["Toyota", "Honda", "Ford", "Chevrolet", "BMW", "Mercedes-Benz", "Audi", "Tesla", "Hyundai", "Kia", "Nissan", "Mazda", "Subaru", "Volvo", "Volkswagen"]
     models_by_make = {
         "Toyota": ["Corolla", "Camry", "RAV4", "Highlander", "Tacoma", "Sienna", "Prius"],
@@ -104,38 +104,6 @@ if 'dummy_user_data' not in st.session_state or 'loan_applications' not in st.se
         "recommended_vehicles": random.sample(DUMMY_VEHICLES, k=2)
     }
 
-# --- Dummy Auction Data (Simulated for functionality) ---
-if 'auctions' not in st.session_state:
-    st.session_state.auctions = [
-        {
-            "id": "AUCT001",
-            "vehicle": "Mercedes-Benz GLC 2022",
-            "initial_bid": 38000,
-            "current_bid": 40500,
-            "end_time": datetime.now() + timedelta(hours=random.randint(1, 48), minutes=random.randint(0, 59)),
-            "last_bidder": "Juan P.",
-            "image_url": "https://images.unsplash.com/photo-1549399518-e3cf14a1a6b0?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-        },
-        {
-            "id": "AUCT002",
-            "vehicle": "Tesla Model Y 2023",
-            "initial_bid": 45000,
-            "current_bid": 47200,
-            "end_time": datetime.now() + timedelta(hours=random.randint(1, 48), minutes=random.randint(0, 59)),
-            "last_bidder": "Ana M.",
-            "image_url": "https://images.unsplash.com/photo-1621644053676-e1f9a2b5e2d6?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-        },
-        {
-            "id": "AUCT003",
-            "vehicle": "Ford Mustang 2020",
-            "initial_bid": 25000,
-            "current_bid": 28100,
-            "end_time": datetime.now() + timedelta(hours=random.randint(1, 48), minutes=random.randint(0, 59)),
-            "last_bidder": "Carlos R.",
-            "image_url": "https://images.unsplash.com/photo-1621535787948-438994382583?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-        }
-    ]
-
 # --- Streamlit App Structure ---
 st.set_page_config(layout="wide", page_title="Finanzauto", initial_sidebar_state="expanded")
 
@@ -158,7 +126,12 @@ page = st.sidebar.radio("Navegación", [
     "Recomendador de Planes",
     "Catálogo de Vehículos",
     "Comparador",
-    "Subastas",
+    "Valoración de Vehículos Usados (IA)", # NEW
+    "Asesor de Mantenimiento (IA)", # NEW
+    "Simulador de Escenarios Financieros (IA)", # NEW
+    "Calculadora de Impacto Ambiental", # NEW
+    "Gamificación de Crédito", # NEW
+    "Alertas de Vehículos", # NEW
     "Portal de Clientes",
     "Portal de Asesores",
     "Blog"
@@ -309,6 +282,11 @@ elif page == "Solicitud de Crédito":
         st.session_state.existing_debts = st.number_input("Deudas Mensuales Existentes ($)", min_value=0, value=500, key="app_existing_debts")
         st.session_state.desired_vehicle_price = st.number_input("Precio del Vehículo Deseado ($)", min_value=0, value=30000, key="app_desired_vehicle_price")
         
+        # New inputs for Personalización de Tasas
+        st.subheader("Información Adicional (para Personalización de Tasas)")
+        job_stability = st.selectbox("Estabilidad Laboral", ["Empleado Fijo", "Contratista", "Independiente", "Desempleado"], key="app_job_stability")
+        vehicle_type_interest = st.selectbox("Tipo de Vehículo de Interés", ["Sedan", "SUV", "Camioneta", "Deportivo", "Eléctrico"], key="app_vehicle_type_interest")
+
         submitted = st.form_submit_button("Enviar Solicitud")
         if submitted:
             if not first_name or not last_name or not email:
@@ -322,7 +300,9 @@ elif page == "Solicitud de Crédito":
                     "telefono": phone,
                     "ingresos": st.session_state.income,
                     "deudas_existentes": st.session_state.existing_debts,
-                    "precio_vehiculo_deseado": st.session_state.desired_vehicle_price
+                    "precio_vehiculo_deseado": st.session_state.desired_vehicle_price,
+                    "estabilidad_laboral": job_stability,
+                    "tipo_vehiculo_interes": vehicle_type_interest
                 })
 
 elif page == "Análisis Preliminar":
@@ -355,6 +335,11 @@ elif page == "Análisis Preliminar":
 
                     estimated_monthly_payment = (desired_vehicle_price * 0.08 / 12) / (1 - (1 + 0.08 / 12)**-(60)) # 8% annual, 60 months
 
+                    # Detección de Fraude (IA) - placeholder
+                    fraud_detection_result = "No se detectaron anomalías significativas (simulado)."
+                    if random.random() < 0.05: # 5% chance of simulated fraud
+                        fraud_detection_result = "Anomalía detectada: Posible inconsistencia en la relación ingresos/precio del vehículo. Requiere revisión manual."
+
                     prompt_for_gemini = f"""
                     Eres un analista de crédito de Finanzauto. Necesito tu análisis preliminar de la elegibilidad de un cliente para un préstamo automotriz.
                     Aquí están los datos del cliente:
@@ -368,6 +353,7 @@ elif page == "Análisis Preliminar":
                     Basado en estos datos y las reglas generales, por favor, proporciona un análisis preliminar conciso.
                     Clasifica la elegibilidad en una de estas categorías: "Altamente Probable", "Requiere Revisión Adicional", "Poco Probable".
                     Explica brevemente las razones de tu clasificación y sugiere qué pasos podría tomar el cliente si la elegibilidad no es "Altamente Probable".
+                    Además, incluye un apartado de 'Detección de Fraude (IA)' con el siguiente resultado: "{fraud_detection_result}".
                     """
                     
                     response = model.generate_content(prompt_for_gemini)
@@ -403,7 +389,10 @@ elif page == "Recomendador de Planes":
                 options=["Cuota mensual baja", "Pagar el préstamo rápidamente", "Flexibilidad en pagos/refinanciamiento", "Bajas tasas de interés"],
                 key="reco_priority"
             )
-        
+            # Input para personalización de tasas
+            job_stability_reco = st.selectbox("Estabilidad Laboral (para personalización)", ["Empleado Fijo", "Contratista", "Independiente", "Desempleado"], key="reco_job_stability")
+            vehicle_type_interest_reco = st.selectbox("Tipo de Vehículo de Interés (para personalización)", ["Sedan", "SUV", "Camioneta", "Deportivo", "Eléctrico"], key="reco_vehicle_type_interest")
+
         submitted_reco = st.form_submit_button("Encontrar mi Plan Ideal")
 
         if submitted_reco:
@@ -427,7 +416,7 @@ elif page == "Recomendador de Planes":
                     generated_plans_info = []
 
                     for plan_template in dummy_loan_plans_data:
-                        # Adjust rate based on credit history (dummy logic)
+                        # Adjust rate based on credit history and new factors (Personalización de Tasas - IA)
                         adjusted_rate = plan_template["base_rate"]
                         if credit_history == "Excelente":
                             adjusted_rate -= 0.02
@@ -435,6 +424,16 @@ elif page == "Recomendador de Planes":
                             adjusted_rate -= 0.01
                         elif credit_history == "Limitado/Sin historial":
                             adjusted_rate += 0.03
+                        
+                        # Apply new factors for advanced personalization (dummy logic)
+                        if job_stability_reco == "Empleado Fijo":
+                            adjusted_rate -= 0.005
+                        elif job_stability_reco == "Independiente":
+                            adjusted_rate += 0.01
+
+                        if vehicle_type_interest_reco == "Eléctrico":
+                            adjusted_rate -= 0.005 # Incentive for EVs
+
                         adjusted_rate = max(0.18, adjusted_rate) # Minimum rate
 
                         # Calculate term based on priority and disposable income
@@ -453,12 +452,12 @@ elif page == "Recomendador de Planes":
                                 if monthly_rate > 0:
                                     # Ensure the argument for log is positive
                                     log_arg = 1 - (monthly_rate * loan_amount) / target_payment
-                                    if log_arg <= 0: # If log argument is non-positive, means payment is too low or interest is too high for a solution
-                                        calculated_term_months = plan_template["max_term"] # Fallback to max term or handle as infeasible
+                                    if log_arg <= 0:
+                                        calculated_term_months = plan_template["max_term"]
                                     else:
                                         term_calc = -math.log(log_arg) / math.log(1 + monthly_rate)
                                         calculated_term_months = round(term_calc)
-                                else: # If rate is 0, simple division
+                                else:
                                     calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else plan_template["max_term"]
 
                             calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
@@ -470,14 +469,14 @@ elif page == "Recomendador de Planes":
 
                             # Add a check for target_payment to avoid division by zero or negative log argument
                             if target_payment <= 0:
-                                calculated_term_months = plan_template["max_term"] # Fallback to max term if target payment is too low/zero
+                                calculated_term_months = plan_template["max_term"]
                             else:
                                 monthly_rate = adjusted_rate / 12
                                 if monthly_rate > 0:
                                     # Ensure the argument for log is positive
                                     log_arg = 1 - (monthly_rate * loan_amount) / target_payment
-                                    if log_arg <= 0: # If log argument is non-positive, means payment is too low or interest is too high for a solution
-                                        calculated_term_months = plan_template["max_term"] # Fallback to max term or handle as infeasible
+                                    if log_arg <= 0:
+                                        calculated_term_months = plan_template["max_term"]
                                     else:
                                         term_calc = -math.log(log_arg) / math.log(1 + monthly_rate)
                                         calculated_term_months = round(term_calc)
@@ -492,10 +491,9 @@ elif page == "Recomendador de Planes":
 
                         monthly_rate = adjusted_rate / 12
                         if monthly_rate > 0 and calculated_term_months > 0:
-                            # Handle potential division by zero if (1 - (1 + monthly_rate)**-calculated_term_months) is zero or very close to zero
                             denominator = (1 - (1 + monthly_rate)**-calculated_term_months)
-                            if denominator == 0: # Should not happen with positive monthly_rate and calculated_term_months
-                                monthly_payment = loan_amount / calculated_term_months # Fallback
+                            if denominator == 0:
+                                monthly_payment = loan_amount / calculated_term_months
                             else:
                                 monthly_payment = (loan_amount * monthly_rate) / denominator
                         else:
@@ -512,11 +510,10 @@ elif page == "Recomendador de Planes":
                             "tasa_anual": adjusted_rate * 100,
                             "monto_financiado": loan_amount,
                             "intereses_totales": total_interest,
-                            "advantages": [], # Will be filled by AI
-                            "disadvantages": [] # Will be filled by AI
+                            "advantages": [],
+                            "disadvantages": []
                         })
                     
-                    # Construct prompt for Gemini to get advantages/disadvantages and potentially refine plan selection
                     plans_for_ai_prompt = ""
                     for i, plan in enumerate(generated_plans_info):
                         plans_for_ai_prompt += f"Plan {i+1}:\n"
@@ -544,6 +541,8 @@ elif page == "Recomendador de Planes":
                     - Ingreso Disponible (para pago de deuda): ${disposable_income:,.2f}
                     - Historial de Crédito: {credit_history}
                     - Prioridad en el Crédito: "{priority}"
+                    - Estabilidad Laboral: {job_stability_reco}
+                    - Tipo de Vehículo de Interés: {vehicle_type_interest_reco}
 
                     Planes de Financiamiento Calculados (pre-calculados):
                     {plans_for_ai_prompt}
@@ -590,21 +589,16 @@ elif page == "Recomendador de Planes":
         
     if "recommended_plans_output" in st.session_state and st.session_state["recommended_plans_output"]:
         st.subheader("Planes de Financiamiento Recomendados")
-        # Split the markdown output by "---" to get individual cards
         raw_cards = st.session_state["recommended_plans_output"].split("---")
-        
-        # Filter out empty strings and process each card
         processed_cards = [card.strip() for card in raw_cards if card.strip()]
         
         if processed_cards:
             for i, card_content in enumerate(processed_cards):
-                # Use st.expander for a card-like effect or just display markdown directly
                 st.markdown(card_content)
                 st.button(f"Seleccionar este Plan (Plan {i+1})", key=f"select_plan_{i}")
-                st.markdown("---") # Separator between cards
+                st.markdown("---")
         else:
             st.warning("No se pudieron generar recomendaciones de planes. Por favor, ajusta tus datos.")
-
 
 elif page == "Catálogo de Vehículos":
     st.header("🚗 Catálogo de Vehículos")
@@ -618,14 +612,12 @@ elif page == "Catálogo de Vehículos":
         min_price = st.number_input("Precio Mínimo ($)", min_value=0, value=0, step=1000, key="catalog_min_price")
     with col_filter2:
         max_price = st.number_input("Precio Máximo ($)", min_value=0, value=150000, step=1000, key="catalog_max_price")
-        # Use a default empty list for multiselect if nothing is selected
         selected_types = st.multiselect("Tipo de Vehículo", options=sorted(list(set([v['type'] for v in DUMMY_VEHICLES]))), key="catalog_types")
     with col_filter3:
-        # Use a default empty list for multiselect if nothing is selected
         selected_fuels = st.multiselect("Tipo de Combustible", options=sorted(list(set([v['fuel'] for v in DUMMY_VEHICLES]))), key="catalog_fuels")
         selected_year = st.slider("Año Mínimo", min_value=2018, max_value=2025, value=2018, key="catalog_year")
 
-    st.markdown("---") # Visual separator for filters and results
+    st.markdown("---")
 
     filtered_vehicles = []
     for vehicle in DUMMY_VEHICLES:
@@ -634,7 +626,6 @@ elif page == "Catálogo de Vehículos":
             if search_query not in vehicle['make'].lower() and \
                search_query not in vehicle['model'].lower():
                 match = False
-        # Ensure price range is handled correctly
         if not (min_price <= vehicle['price'] <= max_price):
             match = False
         if selected_types and vehicle['type'] not in selected_types:
@@ -649,7 +640,7 @@ elif page == "Catálogo de Vehículos":
     
     st.write(f"Mostrando **{len(filtered_vehicles):,}** de **{len(DUMMY_VEHICLES):,}** vehículos que cumplen los criterios.")
 
-    display_limit = 200 # Limit the number of vehicles displayed to avoid excessive rendering
+    display_limit = 200
     if filtered_vehicles:
         for vehicle in filtered_vehicles[:display_limit]:
             st.subheader(f"{vehicle['year']} {vehicle['make']} {vehicle['model']}")
@@ -703,158 +694,52 @@ elif page == "Comparador":
         else:
             st.warning("Por favor, selecciona dos vehículos para comparar.")
 
-elif page == "Subastas":
-    st.header("🔨 Subastas de Vehículos")
-    st.info("¡Participa en nuestras subastas de vehículos exclusivos y consigue grandes ofertas!")
+---
 
-    if not st.session_state.auctions:
-        st.write("No hay subastas activas en este momento. ¡Vuelve pronto!")
-    else:
-        # Sort auctions by remaining time (closest first)
-        active_auctions = sorted([a for a in st.session_state.auctions if a["end_time"] > datetime.now()], key=lambda x: x["end_time"])
-        finished_auctions = sorted([a for a in st.session_state.auctions if a["end_time"] <= datetime.now()], key=lambda x: x["end_time"], reverse=True)
+## Nuevas Funcionalidades Integradas
 
-        if active_auctions:
-            st.subheader("Subastas Activas")
-            for auction in active_auctions:
-                time_remaining = auction["end_time"] - datetime.now()
-                total_seconds = int(time_remaining.total_seconds())
+---
 
-                if total_seconds > 0:
-                    hours, remainder = divmod(total_seconds, 3600)
-                    minutes, seconds = divmod(remainder, 60)
-                    time_str = f"{hours:02}h {minutes:02}m {seconds:02}s"
+### **Valoración de Vehículos Usados (IA)**
 
-                    st.markdown(f"### **{auction['vehicle']}** (ID: {auction['id']})")
-                    if auction["image_url"]:
-                        st.image(auction["image_url"], caption=auction["vehicle"], width=400)
-                    
-                    st.metric(label="Oferta Actual", value=f"${auction['current_bid']:,.2f}")
-                    st.write(f"Última oferta de: **{auction['last_bidder']}**")
-                    st.write(f"Tiempo restante: **{time_str}**")
+```python
+elif page == "Valoración de Vehículos Usados (IA)":
+    st.header("📈 Valoración de Vehículos Usados (IA)")
+    st.info("Obtén una estimación del precio de mercado de tu vehículo usado con la ayuda de nuestra IA.")
 
-                    # Bid input and button
-                    col_bid_input, col_bid_button = st.columns([0.7, 0.3])
-                    with col_bid_input:
-                        new_bid = st.number_input(
-                            f"Tu oferta para {auction['vehicle']} (Min: ${auction['current_bid'] + 100:,.2f})",
-                            min_value=auction['current_bid'] + 100,
-                            value=auction['current_bid'] + 100,
-                            step=100,
-                            key=f"bid_{auction['id']}"
-                        )
-                    with col_bid_button:
-                        st.markdown("<br>", unsafe_allow_html=True) # Add some space to align button
-                        if st.button(f"Hacer Oferta por ${new_bid:,.2f}", key=f"submit_bid_{auction['id']}"):
-                            if new_bid > auction['current_bid']:
-                                auction['current_bid'] = new_bid
-                                auction['last_bidder'] = "Tu (Dummy)" # Simulate current user
-                                st.success(f"¡Oferta de ${new_bid:,.2f} realizada para {auction['vehicle']}!")
-                                # Rerun to update timer and bid
-                                st.rerun() 
-                            else:
-                                st.error("Tu oferta debe ser mayor que la oferta actual.")
-                    st.markdown("---")
-                else:
-                    # Mark auction as finished if time runs out on a rerun
-                    st.session_state.auctions = [a for a in st.session_state.auctions if a["id"] != auction["id"]]
-                    finished_auctions.append(auction) # Move to finished list
-                    st.warning(f"La subasta por el **{auction['vehicle']}** ha terminado. ¡Estate atento a nuevas subastas!")
-                    st.rerun() # Rerun to remove it from active and show in finished
+    with st.form("vehicle_valuation_form"):
+        col_val1, col_val2 = st.columns(2)
+        with col_val1:
+            val_make = st.selectbox("Marca", options=sorted(list(set([v['make'] for v in DUMMY_VEHICLES]))), key="val_make")
+            val_year = st.slider("Año de Fabricación", min_value=1990, max_value=2024, value=2018, key="val_year")
+            val_mileage = st.number_input("Kilometraje (km)", min_value=0, value=50000, step=1000, key="val_mileage")
+        with col_val2:
+            val_model = st.text_input("Modelo", key="val_model")
+            val_condition = st.selectbox("Estado General", options=["Excelente", "Bueno", "Regular", "Necesita Reparaciones"], key="val_condition")
+            val_fuel = st.selectbox("Tipo de Combustible", options=["Gasoline", "Hybrid", "Electric", "Diesel"], key="val_fuel")
 
-        else:
-            st.write("No hay subastas activas en este momento. ¡Vuelve pronto!")
+        submitted_val = st.form_submit_button("Obtener Valoración")
 
-        if finished_auctions:
-            st.subheader("Subastas Finalizadas")
-            for auction in finished_auctions:
-                st.markdown(f"**{auction['vehicle']}** (ID: {auction['id']})")
-                st.write(f"Precio Final: **${auction['current_bid']:,.2f}**")
-                st.write(f"Ganador (Dummy): **{auction['last_bidder']}**")
-                st.write(f"Terminó el: {auction['end_time'].strftime('%Y-%m-%d %H:%M:%S')}")
-                st.markdown("---")
+        if submitted_val:
+            with st.spinner("Analizando el mercado para tu vehículo..."):
+                prompt_valuation = f"""
+                Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que estamos en julio de 2025 en Colombia.
 
-        # Trick to auto-refresh every few seconds for auction timers
-        # This is a simple trick, for real-time you'd need websockets/backend
-        import time
-        time.sleep(1) # Refresh every second
-        st.rerun() # Rerun the app to update timers
+                Información del Vehículo:
+                - Marca: {val_make}
+                - Modelo: {val_model}
+                - Año: {val_year}
+                - Kilometraje: {val_mileage:,} km
+                - Estado General: {val_condition}
+                - Tipo de Combustible: {val_fuel}
 
-elif page == "Portal de Clientes":
-    st.header("👤 Portal de Clientes")
-    st.info("Bienvenido al portal de clientes. Aquí puedes gestionar tus préstamos y ver tu historial.")
-    user_data = st.session_state.dummy_user_data
-    
-    st.subheader(f"Información de Cuenta de {user_data['name']}")
-    st.write(f"**Correo Electrónico:** {user_data['email']}")
-    st.markdown("---")
-
-    st.subheader("Mis Préstamos Actuales")
-    active_loans = [app for app in user_data["loan_applications"] if app.get("status") == "Aprobada" or app.get("stage") == "Desembolsado" or app.get("stage") == "Firma de Contrato"]
-    if active_loans:
-        for loan in active_loans:
-            st.markdown(f"**Préstamo {loan.get('id', 'N/A')}** para **{loan.get('vehicle', 'N/A')}**")
-            st.write(f"- Monto: ${loan.get('amount', 0):,.2f}")
-            st.write(f"- Estado: **{loan.get('status', 'Desconocido')}** / Etapa: **{loan.get('stage', 'Desconocida')}**")
-            st.write(f"- Fecha de Aprobación/Inicio: {loan.get('date', 'N/A')}")
-            st.write(f"- Cuota Mensual Estimada: ${random.randint(500,1500):,.2f}")
-            st.write(f"- Saldo Pendiente (Dummy): ${random.randint(5000, loan.get('amount', 50000)-1000):,.2f}")
-            st.markdown("---")
-    else:
-        st.write("No tienes préstamos activos en este momento.")
-
-    st.subheader("Historial de Solicitudes (Completo)")
-    if user_data["loan_applications"]:
-        for app in user_data["loan_applications"]:
-            status_emoji = "✅" if app.get("status") == "Aprobada" else "⏳" if app.get("status") == "En Revisión" else "❌"
-            st.markdown(f"- **{app.get('id', 'N/A')}:** {app.get('vehicle', 'N/A')} | Monto: ${app.get('amount', 0):,.2f} | Estado: **{status_emoji} {app.get('status', 'Desconocido')}** | Etapa: _{app.get('stage', 'Desconocida')}_ ({app.get('date', 'N/A')})")
-            if "reason" in app:
-                st.info(f"    *Razón:* {app['reason']}")
-        st.markdown("---")
-    else:
-        st.write("No hay historial de solicitudes.")
-
-elif page == "Portal de Asesores":
-    st.header("💼 Portal de Asesores")
-    st.info("Bienvenido al portal de asesores. Aquí puedes gestionar solicitudes y clientes.")
-    
-    all_applications = st.session_state.dummy_user_data["loan_applications"] + [
-        {"id": "ADV001", "vehicle": "Audi Q5 2023", "amount": 55000, "status": "Pendiente", "stage": "Análisis Preliminar", "date": "2025-07-13", "applicant": "María García"},
-        {"id": "ADV002", "vehicle": "Volkswagen ID.4 2024", "amount": 42000, "status": "Pendiente", "stage": "Documentación Enviada", "date": "2025-07-11", "applicant": "Pedro Gómez"}
-    ]
-
-    st.subheader("Solicitudes Pendientes de Revisión")
-    pending_applications = [app for app in all_applications if app.get("status") == "En Revisión" or app.get("status") == "Pendiente" or app.get("stage") == "Análisis Preliminar" or app.get("stage") == "Recopilación de Documentos"]
-    
-    if pending_applications:
-        for app in pending_applications:
-            st.markdown(f"**ID: {app.get('id', 'N/A')}** | **Vehículo:** {app.get('vehicle', 'N/A')} | **Monto:** ${app.get('amount', 0):,.2f}")
-            st.write(f"**Solicitante:** {app.get('applicant', st.session_state.dummy_user_data['name'])}")
-            st.write(f"**Estado:** {app.get('status', 'Desconocido')} | **Etapa:** {app.get('stage', 'Desconocida')} | **Fecha:** {app.get('date', 'N/A')}")
-            st.button(f"Revisar Solicitud {app.get('id', 'N/A')}", key=f"review_{app.get('id', 'N/A')}")
-            st.markdown("---")
-    else:
-        st.write("No hay solicitudes pendientes de revisión en este momento.")
-
-    st.subheader("Estadísticas de Asesores (Dummy)")
-    st.metric(label="Solicitudes Aprobadas (Mes)", value="15")
-    st.metric(label="Solicitudes en Proceso", value="8")
-    st.metric(label="Monto Total Aprobado (Mes)", value="$450,000")
-
-elif page == "Blog":
-    st.header("✍️ Blog de Finanzauto")
-    st.info("Artículos, noticias y consejos sobre el mundo automotriz y el financiamiento.")
-    st.subheader("Últimos Artículos (Dummy)")
-    st.markdown("""
-    ---
-    ### **5 Consejos para Comprar tu Primer Auto**
-    *Por: Equipo Finanzauto | 10 de Julio, 2025*
-    Descubre cómo hacer una compra inteligente...
-    [Leer más](dummy_link_1)
-    ---
-    ### **El Futro de los Vehículos Eléctricos en Colombia**
-    *Por: Analista Invitado | 5 de Julio, 2025*
-    Un vistazo a las tendencias y oportunidades...
-    [Leer más](dummy_link_2)
-    ---
-    """)
+                Ofrece una valoración estimada como un rango de precios (ej. $X.XXX.XXX - $Y.YYY.YYY) y justifica tu estimación basándote en los factores proporcionados. También, menciona brevemente cualquier factor adicional que podría influir en el precio (ej. historial de accidentes, demanda del modelo).
+                """
+                try:
+                    response = model.generate_content(prompt_valuation)
+                    valuation_result = response.text
+                    st.subheader("Valoración Estimada por IA:")
+                    st.markdown(valuation_result)
+                    st.success("¡Esperamos que esta valoración te sea útil!")
+                except Exception as e:
+                    st.error(f"Lo siento, no pude generar la valoración en este momento. Por favor, inténtalo de nuevo. Error: {e}")
