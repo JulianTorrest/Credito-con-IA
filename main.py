@@ -412,14 +412,21 @@ elif page == "Recomendador de Planes":
                             target_payment_ratio = 0.35 # Aim for 35% of disposable income
                             target_payment = disposable_income * target_payment_ratio
                             
-                            if target_payment > 0 and adjusted_rate > 0:
+                            # Add a check for target_payment to avoid division by zero or negative log argument
+                            if target_payment <= 0:
+                                calculated_term_months = plan_template["max_term"] # Fallback to max term if target payment is too low/zero
+                            else:
                                 monthly_rate = adjusted_rate / 12
-                                # Solve for n (number of payments)
                                 if monthly_rate > 0:
-                                    term_calc = -math.log(1 - (monthly_rate * loan_amount) / target_payment) / math.log(1 + monthly_rate)
-                                    calculated_term_months = round(term_calc)
+                                    # Ensure the argument for log is positive
+                                    log_arg = 1 - (monthly_rate * loan_amount) / target_payment
+                                    if log_arg <= 0: # If log argument is non-positive, means payment is too low or interest is too high for a solution
+                                        calculated_term_months = plan_template["max_term"] # Fallback to max term or handle as infeasible
+                                    else:
+                                        term_calc = -math.log(log_arg) / math.log(1 + monthly_rate)
+                                        calculated_term_months = round(term_calc)
                                 else: # If rate is 0, simple division
-                                    calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else 60
+                                    calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else plan_template["max_term"]
 
                             calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
                             
@@ -428,13 +435,21 @@ elif page == "Recomendador de Planes":
                             target_payment_ratio = 0.25 # Aim for 25% of disposable income
                             target_payment = disposable_income * target_payment_ratio
 
-                            if target_payment > 0 and adjusted_rate > 0:
+                            # Add a check for target_payment to avoid division by zero or negative log argument
+                            if target_payment <= 0:
+                                calculated_term_months = plan_template["max_term"] # Fallback to max term if target payment is too low/zero
+                            else:
                                 monthly_rate = adjusted_rate / 12
                                 if monthly_rate > 0:
-                                    term_calc = -math.log(1 - (monthly_rate * loan_amount) / target_payment) / math.log(1 + monthly_rate)
-                                    calculated_term_months = round(term_calc)
+                                    # Ensure the argument for log is positive
+                                    log_arg = 1 - (monthly_rate * loan_amount) / target_payment
+                                    if log_arg <= 0: # If log argument is non-positive, means payment is too low or interest is too high for a solution
+                                        calculated_term_months = plan_template["max_term"] # Fallback to max term or handle as infeasible
+                                    else:
+                                        term_calc = -math.log(log_arg) / math.log(1 + monthly_rate)
+                                        calculated_term_months = round(term_calc)
                                 else:
-                                    calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else 72
+                                    calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else plan_template["max_term"]
                                     
                             calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
                         
@@ -444,7 +459,12 @@ elif page == "Recomendador de Planes":
 
                         monthly_rate = adjusted_rate / 12
                         if monthly_rate > 0 and calculated_term_months > 0:
-                            monthly_payment = (loan_amount * monthly_rate) / (1 - (1 + monthly_rate)**-calculated_term_months)
+                            # Handle potential division by zero if (1 - (1 + monthly_rate)**-calculated_term_months) is zero or very close to zero
+                            denominator = (1 - (1 + monthly_rate)**-calculated_term_months)
+                            if denominator == 0: # Should not happen with positive monthly_rate and calculated_term_months
+                                monthly_payment = loan_amount / calculated_term_months # Fallback
+                            else:
+                                monthly_payment = (loan_amount * monthly_rate) / denominator
                         else:
                             monthly_payment = loan_amount / calculated_term_months if calculated_term_months > 0 else 0
 
@@ -717,7 +737,7 @@ elif page == "Blog":
     Descubre cómo hacer una compra inteligente...
     [Leer más](dummy_link_1)
     ---
-    ### **El Futuro de los Vehículos Eléctricos en Colombia**
+    ### **El Futro de los Vehículos Eléctricos en Colombia**
     *Por: Analista Invitado | 5 de Julio, 2025*
     Un vistazo a las tendencias y oportunidades...
     [Leer más](dummy_link_2)
