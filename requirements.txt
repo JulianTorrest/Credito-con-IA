@@ -1,6 +1,7 @@
 streamlit
 google-generativeai
 PyMuPDF
+langchain 
 langchain-chroma
 langchain-google-genai
 langchain-text-splitters # ¡ESTA ES LA CRÍTICA!
