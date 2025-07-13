@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # --- Configuration ---
 # ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
 # EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
-GEMINI_API_KEY = "AIzaSyB4F2fQErtanjVbWgm4CmD4xxpuSJYX4A" # Tu clave API proporcionada
+GEMINI_API_KEY = "TU_CLAVE_API_AQUI" # ¡IMPORTANTE! Reemplaza esto con tu clave API real
 
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -134,7 +134,8 @@ page = st.sidebar.radio("Navegación", [
     "Alertas de Vehículos", # NEW
     "Portal de Clientes",
     "Portal de Asesores",
-    "Blog"
+    "Blog",
+    "Soporte Multi-idioma" # Moved for logical grouping in the menu
 ])
 
 # --- Page Content Based on Selection ---
@@ -358,6 +359,7 @@ elif page == "Análisis Preliminar":
                     
                     response = model.generate_content(prompt_for_gemini)
                     ai_analysis = response.text
+                    st.session_state["ai_preliminary_analysis_output"] = ai_analysis # Store for gamification
 
                     st.subheader("Resultados del Análisis Preliminar de IA:")
                     st.markdown(ai_analysis)
@@ -589,7 +591,9 @@ elif page == "Recomendador de Planes":
         
     if "recommended_plans_output" in st.session_state and st.session_state["recommended_plans_output"]:
         st.subheader("Planes de Financiamiento Recomendados")
+        # Split the markdown by the "---" separator to get individual cards
         raw_cards = st.session_state["recommended_plans_output"].split("---")
+        # Filter out empty strings from splitting and strip whitespace
         processed_cards = [card.strip() for card in raw_cards if card.strip()]
         
         if processed_cards:
@@ -694,15 +698,8 @@ elif page == "Comparador":
         else:
             st.warning("Por favor, selecciona dos vehículos para comparar.")
 
----
+# --- Nuevas Funcionalidades ---
 
-## Nuevas Funcionalidades Integradas
-
----
-
-### **Valoración de Vehículos Usados (IA)**
-
-```python
 elif page == "Valoración de Vehículos Usados (IA)":
     st.header("📈 Valoración de Vehículos Usados (IA)")
     st.info("Obtén una estimación del precio de mercado de tu vehículo usado con la ayuda de nuestra IA.")
@@ -722,8 +719,9 @@ elif page == "Valoración de Vehículos Usados (IA)":
 
         if submitted_val:
             with st.spinner("Analizando el mercado para tu vehículo..."):
+                # Current date is July 13, 2025 in Bogotá, Colombia
                 prompt_valuation = f"""
-                Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que estamos en julio de 2025 en Colombia.
+                Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que la fecha actual es 13 de julio de 2025 y que el mercado es Colombia.
 
                 Información del Vehículo:
                 - Marca: {val_make}
@@ -733,7 +731,7 @@ elif page == "Valoración de Vehículos Usados (IA)":
                 - Estado General: {val_condition}
                 - Tipo de Combustible: {val_fuel}
 
-                Ofrece una valoración estimada como un rango de precios (ej. $X.XXX.XXX - $Y.YYY.YYY) y justifica tu estimación basándote en los factores proporcionados. También, menciona brevemente cualquier factor adicional que podría influir en el precio (ej. historial de accidentes, demanda del modelo).
+                Ofrece una valoración estimada como un rango de precios (ej. $X.XXX.XXX - $Y.YYY.YYY COP) y justifica tu estimación basándote en los factores proporcionados. También, menciona brevemente cualquier factor adicional que podría influir en el precio (ej. historial de accidentes, demanda del modelo). Utiliza valores realistas para el mercado colombiano.
                 """
                 try:
                     response = model.generate_content(prompt_valuation)
@@ -743,3 +741,336 @@ elif page == "Valoración de Vehículos Usados (IA)":
                     st.success("¡Esperamos que esta valoración te sea útil!")
                 except Exception as e:
                     st.error(f"Lo siento, no pude generar la valoración en este momento. Por favor, inténtalo de nuevo. Error: {e}")
+
+elif page == "Asesor de Mantenimiento (IA)":
+    st.header("🔧 Asesor de Mantenimiento (IA)")
+    st.info("Pregunta a nuestra IA sobre problemas de tu vehículo, mantenimiento recomendado o costos de reparación.")
+
+    with st.form("maintenance_advisor_form"):
+        vehicle_make_model = st.text_input("Marca y Modelo de tu Vehículo (Ej: Toyota Corolla 2020)", key="maint_vehicle_model")
+        problem_description = st.text_area("Describe tu pregunta o problema (Ej: 'ruido en el motor al encender', 'cuándo cambiar las bujías de un Mazda 3')", key="maint_problem_desc")
+        
+        submitted_maint = st.form_submit_button("Obtener Asesoría")
+
+        if submitted_maint:
+            if not vehicle_make_model or not problem_description:
+                st.warning("Por favor, ingresa el modelo de tu vehículo y describe tu pregunta.")
+            else:
+                with st.spinner("Buscando la mejor asesoría para ti..."):
+                    prompt_maintenance = f"""
+                    Eres un asesor experto en mantenimiento automotriz de Finanzauto. El cliente tiene un **{vehicle_make_model}** y su pregunta/problema es: "{problem_description}".
+
+                    Por favor, proporciona una respuesta detallada que incluya:
+                    1.  Una posible causa o explicación del problema (si aplica).
+                    2.  Posibles soluciones o acciones a tomar.
+                    3.  Recomendaciones de mantenimiento preventivo relacionadas (si aplica).
+                    4.  Una estimación general de costos si es una reparación común (ej. "puede variar entre $XXX.XXX y $YYY.YYY COP", usando formato de miles con punto y decimales con coma).
+                    5.  Una advertencia para buscar un profesional si el problema es serio.
+                    """
+                    try:
+                        response = model.generate_content(prompt_maintenance)
+                        maintenance_advice = response.text
+                        st.subheader("Asesoría de Mantenimiento de IA:")
+                        st.markdown(maintenance_advice)
+                    except Exception as e:
+                        st.error(f"Lo siento, no pude generar la asesoría en este momento. Por favor, inténtalo de nuevo. Error: {e}")
+
+elif page == "Simulador de Escenarios Financieros (IA)":
+    st.header("🔮 Simulador de Escenarios Financieros (IA)")
+    st.info("Explora cómo diferentes situaciones financieras podrían afectar tu préstamo automotriz con la ayuda de la IA.")
+
+    st.subheader("Datos Actuales de tu Préstamo (o simulados)")
+    current_loan_amount = st.number_input("Monto actual de tu préstamo automotriz ($)", min_value=1000, value=25000, step=1000, key="sim_loan_amount")
+    current_monthly_payment = st.number_input("Cuota mensual actual ($)", min_value=100, value=500, step=50, key="sim_monthly_payment")
+    remaining_term = st.number_input("Plazo restante (meses)", min_value=1, value=36, step=1, key="sim_remaining_term")
+    current_interest_rate = st.slider("Tasa de Interés Anual actual (%)", 2.0, 15.0, 8.0, step=0.1, key="sim_interest_rate")
+
+    st.subheader("Escenario a Simular")
+    scenario_type = st.selectbox("¿Qué escenario quieres simular?", 
+                                 options=["Cambio de Ingresos", "Deuda Adicional", "Pago Extra", "Refinanciamiento"], key="sim_scenario_type")
+
+    scenario_value = 0
+    if scenario_type == "Cambio de Ingresos":
+        scenario_value = st.number_input("Nuevo Ingreso Mensual Neto ($) (Ej: 2500)", min_value=0, value=2000, step=100, key="sim_scenario_income")
+    elif scenario_type == "Deuda Adicional":
+        scenario_value = st.number_input("Monto de Nueva Deuda Mensual ($) (Ej: 200)", min_value=0, value=100, step=10, key="sim_scenario_debt")
+    elif scenario_type == "Pago Extra":
+        scenario_value = st.number_input("Monto de Pago Extra Único ($) (Ej: 1000)", min_value=0, value=500, step=100, key="sim_scenario_extra_payment")
+    elif scenario_type == "Refinanciamiento":
+        scenario_value = st.slider("Nueva Tasa de Interés Anual (%) (Ej: 6.5)", 2.0, 15.0, 6.5, step=0.1, key="sim_scenario_refi_rate")
+    
+    simulate_button = st.button("Simular Escenario con IA")
+
+    if simulate_button:
+        with st.spinner("Analizando tu escenario financiero..."):
+            prompt_scenario = f"""
+            Eres un experto en finanzas personales de Finanzauto. Necesito que simules el impacto de un escenario financiero en un préstamo automotriz existente.
+
+            Datos del Préstamo Actual:
+            - Monto Original del Préstamo (se asume que es el mismo que el "Monto actual"): ${current_loan_amount:,.2f}
+            - Cuota Mensual Actual: ${current_monthly_payment:,.2f}
+            - Plazo Restante: {remaining_term} meses
+            - Tasa de Interés Anual Actual: {current_interest_rate:.1f}%
+
+            Escenario a Simular:
+            - Tipo de Escenario: "{scenario_type}"
+            - Valor del Escenario: {scenario_value if scenario_type != "Refinanciamiento" else f"{scenario_value}%"}
+
+            Por favor, explica claramente el impacto esperado en la cuota mensual, el plazo restante, y el interés total pagado, si aplica. Ofrece consejos prácticos sobre cómo manejar este escenario o aprovecharlo. Utiliza formato de moneda de Colombia ($ pesos con puntos para miles y comas para decimales, ej. $1.000.000,00).
+            """
+            try:
+                response = model.generate_content(prompt_scenario)
+                scenario_analysis = response.text
+                st.subheader("Análisis de Escenario por IA:")
+                st.markdown(scenario_analysis)
+            except Exception as e:
+                st.error(f"Lo siento, no pude simular el escenario en este momento. Por favor, inténtalo de nuevo. Error: {e}")
+
+elif page == "Calculadora de Impacto Ambiental":
+    st.header("🌎 Calculadora de Impacto Ambiental")
+    st.info("Estima la huella de carbono de diferentes vehículos y descubre opciones más sostenibles.")
+
+    with st.form("environmental_impact_form"):
+        col_env1, col_env2 = st.columns(2)
+        with col_env1:
+            env_vehicle_type = st.selectbox("Tipo de Vehículo", ["Gasolina", "Diésel", "Híbrido", "Eléctrico"], key="env_vehicle_type")
+            env_mileage_year = st.number_input("Kilometraje Anual Estimado (km)", min_value=1000, value=15000, step=1000, key="env_mileage_year")
+        with col_env2:
+            # Adjust label and default value based on vehicle type
+            if env_vehicle_type == "Eléctrico":
+                env_fuel_efficiency = st.number_input("Consumo de Energía (Km/kWh)", min_value=0.1, value=5.0, step=0.1, key="env_fuel_efficiency_ev")
+                env_avg_price_fuel = st.number_input("Precio promedio de la Electricidad (COP/kWh)", min_value=100, value=600, step=10, key="env_avg_price_fuel_ev")
+            else:
+                env_fuel_efficiency = st.number_input("Consumo de Combustible (Km/Litro)", min_value=1.0, value=12.0, step=0.1, key="env_fuel_efficiency_ice")
+                env_avg_price_fuel = st.number_input("Precio promedio del Combustible (COP/Litro)", min_value=1000, value=9500, step=100, key="env_avg_price_fuel_ice")
+
+        submitted_env = st.form_submit_button("Calcular Huella y Costo")
+
+        if submitted_env:
+            co2_emissions_kg = 0
+            annual_fuel_cost = 0
+
+            # Dummy values for CO2 per liter/kWh (approximate for Colombia)
+            # CO2 emissions factors (simplified, real data varies)
+            # Gasoline: ~2.3 kg CO2/liter
+            # Diesel: ~2.6 kg CO2/liter
+            # Electricity (Colombia mix, very roughly): ~0.2-0.4 kg CO2/kWh (can be lower due to hydro)
+            if env_fuel_efficiency <= 0:
+                st.error("El consumo de combustible/energía debe ser mayor que cero.")
+            else:
+                if env_vehicle_type == "Gasolina":
+                    liters_consumed = env_mileage_year / env_fuel_efficiency
+                    co2_emissions_kg = liters_consumed * 2.3 # kg CO2 per liter
+                    annual_fuel_cost = liters_consumed * env_avg_price_fuel
+                elif env_vehicle_type == "Diésel":
+                    liters_consumed = env_mileage_year / env_fuel_efficiency
+                    co2_emissions_kg = liters_consumed * 2.6 # kg CO2 per liter
+                    annual_fuel_cost = liters_consumed * env_avg_price_fuel
+                elif env_vehicle_type == "Híbrido":
+                    # Assume 30% reduction for hybrid
+                    liters_consumed = env_mileage_year / env_fuel_efficiency
+                    co2_emissions_kg = liters_consumed * 2.3 * 0.7 # kg CO2 per liter (reduced)
+                    annual_fuel_cost = liters_consumed * env_avg_price_fuel
+                elif env_vehicle_type == "Eléctrico":
+                    kwh_consumed = env_mileage_year / env_fuel_efficiency
+                    co2_emissions_kg = kwh_consumed * 0.3 # kg CO2 per kWh (based on Colombian grid mix, simplified)
+                    annual_fuel_cost = kwh_consumed * env_avg_price_fuel
+
+                st.subheader("Resultados del Impacto Ambiental y Costo Anual:")
+                st.success(f"**Emisiones de CO2 Anuales Estimadas:** {co2_emissions_kg:,.2f} kg")
+                st.info(f"**Costo Anual Estimado de Combustible/Electricidad:** ${annual_fuel_cost:,.2f} COP")
+                
+                st.markdown("---")
+                st.subheader("Recomendaciones para Reducir Impacto:")
+                if env_vehicle_type in ["Gasolina", "Diésel"]:
+                    st.write("- Considera opciones híbridas o eléctricas en tu próxima compra.")
+                    st.write("- Mantén tu vehículo con un mantenimiento regular para mejorar la eficiencia.")
+                    st.write("- Adopta hábitos de conducción eficientes (evita aceleraciones y frenadas bruscas).")
+                elif env_vehicle_type == "Híbrido":
+                    st.write("- Aprovecha al máximo el modo eléctrico de tu vehículo.")
+                    st.write("- Considera la transición a un vehículo 100% eléctrico para cero emisiones directas.")
+                elif env_vehicle_type == "Eléctrico":
+                    st.write("- Asegúrate de cargar tu vehículo con energía de fuentes renovables si es posible (ej. paneles solares).")
+                    st.write("- Sigue promoviendo la infraestructura de carga para vehículos eléctricos.")
+
+elif page == "Gamificación de Crédito":
+    st.header("🎮 Gamificación de tu Proceso de Crédito")
+    st.info("Completa hitos en tu proceso de crédito para ganar puntos y beneficios exclusivos.")
+
+    if 'gamification_points' not in st.session_state:
+        st.session_state.gamification_points = 0
+    if 'gamification_badges' not in st.session_state:
+        st.session_state.gamification_badges = []
+    
+    st.subheader(f"Tus Puntos Actuales: {st.session_state.gamification_points} ⭐")
+
+    st.subheader("Hitos para Ganar Puntos:")
+    
+    col_game1, col_game2 = st.columns(2)
+
+    # Milestones and their conditions (dummy, tied to session state variables)
+    milestones = [
+        {"name": "Perfil Completo", "desc": "Completa toda tu información en la 'Solicitud de Crédito'.", "points": 50, "condition_key": "app_first_name", "badge": "🌟 Perfil Pro"},
+        {"name": "Análisis Preliminar Realizado", "desc": "Utiliza la herramienta de 'Análisis Preliminar'.", "points": 75, "condition_key": "ai_preliminary_analysis_output", "badge": "🧠 Analista Novato"},
+        {"name": "Plan Recomendado", "desc": "Obtén una recomendación de plan en 'Recomendador de Planes'.", "points": 100, "condition_key": "recommended_plans_output", "badge": "💡 Planificador Experto"},
+        {"name": "Solicitud Aprobada (Demo)", "desc": "Tu solicitud de crédito ha sido aprobada (simulado).", "points": 200, "condition_key": "dummy_loan_approved", "badge": "✅ Crédito Aprobado"},
+    ]
+
+    # Process milestones to update points and badges
+    for milestone in milestones:
+        is_completed = False
+        if milestone["condition_key"] == "app_first_name":
+            if st.session_state.get("app_first_name") and st.session_state.get("app_last_name"):
+                is_completed = True
+        elif milestone["condition_key"] == "ai_preliminary_analysis_output":
+            if st.session_state.get("ai_preliminary_analysis_output"):
+                is_completed = True
+        elif milestone["condition_key"] == "recommended_plans_output":
+            if st.session_state.get("recommended_plans_output"):
+                is_completed = True
+        elif milestone["condition_key"] == "dummy_loan_approved":
+            # Check if any loan in the dummy data is approved
+            if any(app['status'] == "Aprobada" for app in st.session_state.dummy_user_data['loan_applications']):
+                is_completed = True
+        
+        # Only add points and badge if not already completed
+        if is_completed and milestone["badge"] not in st.session_state.gamification_badges:
+            st.session_state.gamification_points += milestone["points"]
+            st.session_state.gamification_badges.append(milestone["badge"])
+            # Rerun to update the displayed points/badges immediately after earning
+            st.toast(f"¡Ganaste {milestone['points']} puntos por '{milestone['name']}' y la insignia '{milestone['badge']}'!", icon="🎉")
+            st.rerun() 
+
+    # Display milestones
+    for milestone in milestones:
+        is_current_completed = False
+        if milestone["condition_key"] == "app_first_name":
+            if st.session_state.get("app_first_name") and st.session_state.get("app_last_name"):
+                is_current_completed = True
+        elif milestone["condition_key"] == "ai_preliminary_analysis_output":
+            if st.session_state.get("ai_preliminary_analysis_output"):
+                is_current_completed = True
+        elif milestone["condition_key"] == "recommended_plans_output":
+            if st.session_state.get("recommended_plans_output"):
+                is_current_completed = True
+        elif milestone["condition_key"] == "dummy_loan_approved":
+            if any(app['status'] == "Aprobada" for app in st.session_state.dummy_user_data['loan_applications']):
+                is_current_completed = True
+
+        status_emoji = "✅ Completado" if is_current_completed else "⏳ Pendiente"
+        
+        with col_game1:
+            st.markdown(f"**{milestone['name']}**")
+            st.write(f"- {milestone['desc']}")
+        with col_game2:
+            st.write(f"Puntos: {milestone['points']} | Estado: {status_emoji}")
+
+    st.subheader("Tus Insignias:")
+    if st.session_state.gamification_badges:
+        st.write(", ".join(st.session_state.gamification_badges))
+    else:
+        st.write("Aún no tienes insignias. ¡Empieza a completar hitos!")
+
+    st.markdown("---")
+    st.info("Puntos y insignias son solo una simulación para demostrar la funcionalidad. Los beneficios reales se comunicarían oportunamente.")
+
+elif page == "Alertas de Vehículos":
+    st.header("🔔 Alertas de Vehículos")
+    st.info("Configura alertas personalizadas y te notificaremos cuando vehículos que coincidan con tus criterios estén disponibles.")
+
+    st.subheader("Configurar Nueva Alerta")
+    with st.form("vehicle_alert_form"):
+        alert_make = st.selectbox("Marca Preferida", options=["Cualquiera"] + sorted(list(set([v['make'] for v in DUMMY_VEHICLES]))), key="alert_make")
+        alert_model = st.text_input("Modelo Específico (opcional)", key="alert_model")
+        alert_max_price = st.number_input("Precio Máximo ($)", min_value=0, value=50000, step=1000, key="alert_max_price")
+        alert_type = st.multiselect("Tipos de Vehículo", options=sorted(list(set([v['type'] for v in DUMMY_VEHICLES]))), key="alert_type")
+        alert_email = st.text_input("Correo Electrónico para notificaciones", value=st.session_state.dummy_user_data["email"], key="alert_email")
+
+        submitted_alert = st.form_submit_button("Crear Alerta")
+
+        if submitted_alert:
+            if not alert_email:
+                st.warning("Por favor, ingresa un correo electrónico para las notificaciones.")
+            else:
+                new_alert = {
+                    "make": alert_make,
+                    "model": alert_model if alert_model else "Cualquiera",
+                    "max_price": alert_max_price,
+                    "type": alert_type if alert_type else "Cualquiera",
+                    "email": alert_email,
+                    "status": "Activa",
+                    "created_date": datetime.now().strftime("%Y-%m-%d")
+                }
+                if 'user_alerts' not in st.session_state:
+                    st.session_state.user_alerts = []
+                st.session_state.user_alerts.append(new_alert)
+                st.success("¡Alerta creada con éxito! Te notificaremos si encontramos vehículos que coincidan.")
+                
+    st.subheader("Tus Alertas Activas")
+    if 'user_alerts' in st.session_state and st.session_state.user_alerts:
+        for i, alert in enumerate(st.session_state.user_alerts):
+            st.markdown(f"**Alerta #{i+1}**")
+            st.write(f"- Marca: {alert['make']} | Modelo: {alert['model']}")
+            st.write(f"- Precio Máximo: ${alert['max_price']:,.2f} | Tipo(s): {', '.join(alert['type']) if isinstance(alert['type'], list) else alert['type']}")
+            st.write(f"- Estado: {alert['status']} | Creada: {alert['created_date']}")
+            if alert['status'] == "Activa":
+                if st.button(f"Desactivar Alerta {i+1}", key=f"deactivate_alert_{i}"):
+                    st.session_state.user_alerts[i]["status"] = "Inactiva"
+                    st.warning(f"Alerta #{i+1} desactivada.")
+                    st.rerun()
+            else:
+                st.info("Esta alerta está inactiva.")
+            st.markdown("---")
+    else:
+        st.write("Aún no tienes alertas configuradas. ¡Crea una para no perderte tu vehículo ideal!")
+
+elif page == "Portal de Clientes":
+    st.header("👤 Portal de Clientes")
+    st.info("Un espacio personalizado para que los clientes gestionen sus créditos y vehículos.")
+    st.write("Aquí los clientes podrían:")
+    st.markdown("- Ver el estado de sus solicitudes de crédito.")
+    st.markdown("- Acceder a documentos de sus préstamos.")
+    st.markdown("- Ver el historial de pagos y próximos vencimientos.")
+    st.markdown("- Actualizar su información de contacto.")
+    st.markdown("- Recibir ofertas personalizadas de vehículos o refinanciamientos.")
+
+elif page == "Portal de Asesores":
+    st.header("💼 Portal de Asesores")
+    st.info("Herramientas para que los asesores gestionen y den seguimiento a las solicitudes de los clientes.")
+    st.write("Aquí los asesores podrían:")
+    st.markdown("- Ver un listado de todas las solicitudes de crédito (nuevas, en revisión, aprobadas).")
+    st.markdown("- Acceder a los detalles de cada solicitud, incluyendo el análisis preliminar de IA.")
+    st.markdown("- Cargar documentos adicionales solicitados a los clientes.")
+    st.markdown("- Aprobar o rechazar solicitudes, con opciones para justificar la decisión.")
+    st.markdown("- Enviar comunicaciones personalizadas a los clientes.")
+    st.markdown("- Acceder a métricas de rendimiento y productividad.")
+
+elif page == "Blog":
+    st.header("📰 Blog de Finanzauto")
+    st.info("Artículos y noticias sobre el mundo automotriz, consejos financieros y novedades de Finanzauto.")
+    st.write("Explora nuestros últimos posts:")
+    st.markdown("---")
+    st.markdown("#### **Guía Completa para Comprar tu Primer Auto Usado**")
+    st.write("Aprende todo lo que necesitas saber para hacer una compra inteligente.")
+    st.write("_Publicado el: 10 de Julio, 2025_")
+    st.button("Leer Más", key="blog1")
+    st.markdown("---")
+    st.markdown("#### **5 Razones por las que un Vehículo Eléctrico Podría Ser tu Mejor Inversión**")
+    st.write("Descubre los beneficios ambientales y económicos de la movilidad eléctrica.")
+    st.write("_Publicado el: 1 de Julio, 2025_")
+    st.button("Leer Más", key="blog2")
+    st.markdown("---")
+    st.markdown("#### **Cómo Mejorar tu Historial Crediticio para Obtener Mejores Tasas**")
+    st.write("Consejos prácticos para fortalecer tu perfil financiero.")
+    st.write("_Publicado el: 20 de Junio, 2025_")
+    st.button("Leer Más", key="blog3")
+    st.markdown("---")
+
+elif page == "Soporte Multi-idioma":
+    st.header("🌐 Soporte Multi-idioma")
+    st.info("Selecciona el idioma de tu preferencia para la interfaz y el Asistente AI.")
+
+    selected_language = st.selectbox("Idioma de la Interfaz", options=["Español", "English", "Português"], key="app_language")
+
+    st.success(f"Idioma de la interfaz establecido a: **{selected_language}**.")
+    st.write("Nota: La implementación completa del multi-idioma (traducción de todos los textos y respuestas de la IA) es una funcionalidad compleja que requiere integración profunda y servicios de traducción para el modelo de IA. Esta es una demostración conceptual.")
