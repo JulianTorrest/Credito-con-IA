@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import random
 import os
+import math # Importamos math para cálculos financieros
 
 # --- Configuration ---
 # ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
@@ -347,55 +348,210 @@ elif page == "Análisis Preliminar":
 
 elif page == "Recomendador de Planes":
     st.header("💡 Recomendador de Planes Financieros")
-    st.info("Cuéntanos sobre tus objetivos y te ayudaremos a encontrar el plan de financiamiento ideal.")
-    
-    plan_preferences = st.text_area(
-        "Describe tu situación financiera y tus objetivos para un préstamo automotriz (ej: 'Busco la cuota mensual más baja posible', 'Quiero pagar el préstamo rápidamente', 'Necesito un plan flexible con opciones de refinanciamiento'):",
-        key="plan_reco_prompt"
-    )
+    st.info("Cuéntanos sobre tus necesidades y te ayudaremos a encontrar el plan de financiamiento ideal.")
 
-    if st.button("Buscar Recomendaciones de Planes"):
-        if plan_preferences:
-            st.write(f"Analizando tus preferencias de plan: '{plan_preferences}'...")
-            
-            with st.spinner("Buscando recomendaciones de planes con IA..."):
-                try:
-                    dummy_loan_plans = [
-                        {"name": "Plan Estándar", "description": "Tasa fija, plazos de 3 a 6 años, pagos mensuales consistentes."},
-                        {"name": "Plan Flexi-Pago", "description": "Tasa fija, plazos extendidos hasta 7 años, pagos iniciales más bajos con opción de abonos extraordinarios."},
-                        {"name": "Plan Joven Conductor", "description": "Dirigido a primeros compradores, tasas competitivas, posibilidad de incluir seguro en cuota."},
-                        {"name": "Plan Eco-Auto", "description": "Beneficios especiales para vehículos híbridos y eléctricos, tasas preferenciales, plazos de 5 a 8 años."},
-                        {"name": "Plan Plus", "description": "Para clientes con buen historial, tasas muy bajas, plazos cortos a medios (1-4 años), requiere enganche alto."}
+    with st.form("financial_plan_recommender_form"):
+        st.subheader("Tus Datos Financieros y Preferencias")
+        
+        col_form1, col_form2 = st.columns(2)
+        with col_form1:
+            vehicle_value = st.number_input("Valor del Vehículo Deseado ($)", min_value=10000, value=50000, step=1000, key="reco_vehicle_value")
+            initial_payment = st.number_input("Cuota Inicial ($)", min_value=0, value=10000, step=500, key="reco_initial_payment")
+            monthly_income = st.number_input("Ingresos Mensuales Netos ($)", min_value=500, value=3000, step=100, key="reco_monthly_income")
+        with col_form2:
+            monthly_expenses = st.number_input("Gastos Mensuales (sin auto) ($)", min_value=0, value=1000, step=50, key="reco_monthly_expenses")
+            credit_history = st.selectbox(
+                "Historial de Crédito",
+                options=["Excelente", "Bueno", "Regular", "Limitado/Sin historial"],
+                key="reco_credit_history"
+            )
+            priority = st.selectbox(
+                "¿Qué priorizas en tu crédito?",
+                options=["Cuota mensual baja", "Pagar el préstamo rápidamente", "Flexibilidad en pagos/refinanciamiento", "Bajas tasas de interés"],
+                key="reco_priority"
+            )
+        
+        submitted_reco = st.form_submit_button("Encontrar mi Plan Ideal")
+
+        if submitted_reco:
+            if vehicle_value <= initial_payment:
+                st.error("El valor del vehículo debe ser mayor que la cuota inicial.")
+            elif monthly_income <= monthly_expenses:
+                st.error("Tus ingresos mensuales deben ser mayores que tus gastos mensuales para calificar.")
+            else:
+                with st.spinner("Analizando tus datos y encontrando planes ideales..."):
+                    loan_amount = vehicle_value - initial_payment
+                    disposable_income = monthly_income - monthly_expenses
+                    
+                    # Dummy plans and their characteristics (simplified for prompt)
+                    # In a real app, these would come from a database/system
+                    dummy_loan_plans_data = [
+                        {"name": "Plan Balance Ideal", "description": "Este plan está diseñado para un pago mensual equilibrado, ajustándose a tus ingresos y gastos, mientras mantiene la deuda manejable. Es la opción más sensata considerando tu preferencia por un balance.", "min_term": 48, "max_term": 72, "base_rate": 0.22, "priority_match": ["Cuota mensual baja", "Flexibilidad en pagos/refinanciamiento"], "income_factor": 0.35}, # 22% E.A.
+                        {"name": "Plan Pago Rápido", "description": "Si tu objetivo es reducir la deuda y minimizar los intereses totales, este plan te permite pagar más rápido con cuotas más altas pero un plazo menor.", "min_term": 24, "max_term": 48, "base_rate": 0.20, "priority_match": ["Pagar el préstamo rápidamente", "Bajas tasas de interés"], "income_factor": 0.45}, # 20% E.A.
+                        {"name": "Plan Flexi-Cuota", "description": "Con plazos extendidos y la opción de pagos extraordinarios, este plan ofrece máxima flexibilidad para adaptarse a cambios en tu situación financiera.", "min_term": 60, "max_term": 84, "base_rate": 0.25, "priority_match": ["Flexibilidad en pagos/refinanciamiento", "Cuota mensual baja"], "income_factor": 0.30}, # 25% E.A.
                     ]
 
-                    prompt_for_gemini = f"""
-                    Eres un asesor financiero de Finanzauto especializado en préstamos automotrices.
-                    Un cliente te ha dado sus preferencias para un plan de financiamiento.
-                    Basándote en sus preferencias y en la siguiente descripción de nuestros planes de préstamo dummy, recomienda 2-3 planes que mejor se adapten a sus necesidades.
-                    Explica por qué cada plan es una buena opción para sus objetivos.
+                    generated_plans_info = []
 
-                    Preferencias del cliente: "{plan_preferences}"
+                    for plan_template in dummy_loan_plans_data:
+                        # Adjust rate based on credit history (dummy logic)
+                        adjusted_rate = plan_template["base_rate"]
+                        if credit_history == "Excelente":
+                            adjusted_rate -= 0.02
+                        elif credit_history == "Bueno":
+                            adjusted_rate -= 0.01
+                        elif credit_history == "Limitado/Sin historial":
+                            adjusted_rate += 0.03
+                        adjusted_rate = max(0.18, adjusted_rate) # Minimum rate
 
-                    Nuestros planes de préstamo disponibles:
-                    {dummy_loan_plans}
+                        # Calculate term based on priority and disposable income
+                        calculated_term_months = 60 # Default for Balance Ideal
 
-                    Formato de respuesta deseado:
-                    **Recomendaciones de Planes de Financiamiento:**
-                    - **[Nombre del Plan]:** [Breve explicación de por qué es recomendado para las preferencias del cliente].
-                    - **[Nombre del Plan]:** [Breve explicación de por qué es recomendado para las preferencias del cliente].
-                    ...
+                        if plan_template["name"] == "Plan Pago Rápido":
+                            # Try to find a term where payment is a higher percentage of income
+                            target_payment_ratio = 0.35 # Aim for 35% of disposable income
+                            target_payment = disposable_income * target_payment_ratio
+                            
+                            if target_payment > 0 and adjusted_rate > 0:
+                                monthly_rate = adjusted_rate / 12
+                                # Solve for n (number of payments)
+                                if monthly_rate > 0:
+                                    term_calc = -math.log(1 - (monthly_rate * loan_amount) / target_payment) / math.log(1 + monthly_rate)
+                                    calculated_term_months = round(term_calc)
+                                else: # If rate is 0, simple division
+                                    calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else 60
+
+                            calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
+                            
+                        elif plan_template["name"] == "Plan Flexi-Cuota":
+                            # Try to find a term where payment is a lower percentage of income
+                            target_payment_ratio = 0.25 # Aim for 25% of disposable income
+                            target_payment = disposable_income * target_payment_ratio
+
+                            if target_payment > 0 and adjusted_rate > 0:
+                                monthly_rate = adjusted_rate / 12
+                                if monthly_rate > 0:
+                                    term_calc = -math.log(1 - (monthly_rate * loan_amount) / target_payment) / math.log(1 + monthly_rate)
+                                    calculated_term_months = round(term_calc)
+                                else:
+                                    calculated_term_months = round(loan_amount / target_payment) if target_payment > 0 else 72
+                                    
+                            calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
+                        
+                        # Fallback for balance or if calculated term is out of range
+                        if not (plan_template["min_term"] <= calculated_term_months <= plan_template["max_term"]):
+                            calculated_term_months = random.randint(plan_template["min_term"], plan_template["max_term"])
+
+                        monthly_rate = adjusted_rate / 12
+                        if monthly_rate > 0 and calculated_term_months > 0:
+                            monthly_payment = (loan_amount * monthly_rate) / (1 - (1 + monthly_rate)**-calculated_term_months)
+                        else:
+                            monthly_payment = loan_amount / calculated_term_months if calculated_term_months > 0 else 0
+
+                        total_payment = monthly_payment * calculated_term_months
+                        total_interest = total_payment - loan_amount
+
+                        generated_plans_info.append({
+                            "name": plan_template["name"],
+                            "description": plan_template["description"],
+                            "cuota_mensual": monthly_payment,
+                            "plazo_meses": calculated_term_months,
+                            "tasa_anual": adjusted_rate * 100,
+                            "monto_financiado": loan_amount,
+                            "intereses_totales": total_interest,
+                            "advantages": [], # Will be filled by AI
+                            "disadvantages": [] # Will be filled by AI
+                        })
+                    
+                    # Construct prompt for Gemini to get advantages/disadvantages and potentially refine plan selection
+                    plans_for_ai_prompt = ""
+                    for i, plan in enumerate(generated_plans_info):
+                        plans_for_ai_prompt += f"Plan {i+1}:\n"
+                        plans_for_ai_prompt += f"  Nombre: {plan['name']}\n"
+                        plans_for_ai_prompt += f"  Descripción: {plan['description']}\n"
+                        plans_for_ai_prompt += f"  Cuota Mensual Estimada: ${plan['cuota_mensual']:,.2f}\n"
+                        plans_for_ai_prompt += f"  Plazo: {plan['plazo_meses']} meses\n"
+                        plans_for_ai_prompt += f"  Tasa Anual: {plan['tasa_anual']:.2f}% E.A.\n"
+                        plans_for_ai_prompt += f"  Monto Financiado: ${plan['monto_financiado']:,.2f}\n"
+                        plans_for_ai_prompt += f"  Intereses Totales: ${plan['intereses_totales']:,.2f}\n\n"
+
+                    ai_prompt = f"""
+                    Como experto financiero de Finanzauto, te proporciono los datos de un cliente y tres posibles planes de financiamiento.
+                    Tu tarea es:
+                    1. Reafirmar cuál de los planes es el **más adecuado** basado en la prioridad del cliente.
+                    2. Para cada plan, genera una sección de "Ventajas" y "Desventajas" específicas, considerando los datos del cliente y el plan.
+                    3. La descripción inicial de cada plan ya está provista, pero puedes complementarla si lo consideras necesario.
+
+                    Datos del Cliente:
+                    - Valor del Vehículo Deseado: ${vehicle_value:,.2f}
+                    - Cuota Inicial: ${initial_payment:,.2f}
+                    - Monto a Financiar: ${loan_amount:,.2f}
+                    - Ingresos Mensuales Netos: ${monthly_income:,.2f}
+                    - Gastos Mensuales (sin auto): ${monthly_expenses:,.2f}
+                    - Ingreso Disponible (para pago de deuda): ${disposable_income:,.2f}
+                    - Historial de Crédito: {credit_history}
+                    - Prioridad en el Crédito: "{priority}"
+
+                    Planes de Financiamiento Calculados (pre-calculados):
+                    {plans_for_ai_prompt}
+
+                    Genera la salida estructurada como una lista de tarjetas. Cada tarjeta debe seguir exactamente este formato Markdown, incluyendo los saltos de línea y el formato negrita/itálica.
+                    Asegúrate de que los valores numéricos estén formateados con puntos para miles y comas para decimales, y el símbolo de dólar ($) al inicio, como "$ 1.145.775".
+
+                    ---
+                    **[Nombre del Plan]**
+                    [Descripción del plan, puede ser la proporcionada o ligeramente mejorada por la IA]
+                    **Cuota Mensual Estimada**
+                    $[Cuota Mensual del Plan, formateada]
+                    **Plazo**
+                    [Plazo en meses] meses
+                    **Tasa Anual**
+                    [Tasa anual formateada]% E.A.
+                    **Monto Financiado**
+                    $[Monto Financiado formateado]
+                    **Intereses Totales**
+                    $[Intereses Totales formateado]
+
+                    **Ventajas**
+                    * [Ventaja 1 específica del plan y del cliente]
+                    * [Ventaja 2 específica del plan y del cliente]
+                    * [Ventaja 3 específica del plan y del cliente]
+
+                    **Desventajas**
+                    * [Desventaja 1 específica del plan y del cliente]
+                    * [Desventaja 2 específica del plan y del cliente]
+                    * [Desventaja 3 específica del plan y del cliente]
+                    ---
+
+                    Asegúrate de generar 3 tarjetas, una por cada plan proporcionado en la entrada, y que la "Descripción" de cada plan sea adecuada y coherente con el nombre y la filosofía del plan.
                     """
-                    
-                    response = model.generate_content(prompt_for_gemini)
-                    ai_recommendations = response.text
-                    
-                    st.subheader("Recomendaciones de Planes de Financiamiento por la IA:")
-                    st.markdown(ai_recommendations)
-                    
-                except Exception as e:
-                    st.error(f"Lo siento, hubo un error al generar las recomendaciones de planes. Por favor, inténtalo de nuevo. Error: {e}")
+
+                    try:
+                        response = model.generate_content(ai_prompt)
+                        ai_recommendations_markdown = response.text
+                        st.session_state["recommended_plans_output"] = ai_recommendations_markdown
+                        
+                    except Exception as e:
+                        st.error(f"Lo siento, hubo un error al generar las recomendaciones de planes. Por favor, inténtalo de nuevo. Error: {e}")
+                        st.session_state["recommended_plans_output"] = None
+        
+    if "recommended_plans_output" in st.session_state and st.session_state["recommended_plans_output"]:
+        st.subheader("Planes de Financiamiento Recomendados")
+        # Split the markdown output by "---" to get individual cards
+        raw_cards = st.session_state["recommended_plans_output"].split("---")
+        
+        # Filter out empty strings and process each card
+        processed_cards = [card.strip() for card in raw_cards if card.strip()]
+        
+        if processed_cards:
+            for i, card_content in enumerate(processed_cards):
+                # Use st.expander for a card-like effect or just display markdown directly
+                st.markdown(card_content)
+                st.button(f"Seleccionar este Plan (Plan {i+1})", key=f"select_plan_{i}")
+                st.markdown("---") # Separator between cards
         else:
-            st.warning("Por favor, describe tus preferencias para recibir recomendaciones de planes.")
+            st.warning("No se pudieron generar recomendaciones de planes. Por favor, ajusta tus datos.")
+
 
 elif page == "Catálogo de Vehículos":
     st.header("🚗 Catálogo de Vehículos")
