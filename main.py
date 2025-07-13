@@ -5,9 +5,9 @@ import os
 
 # --- Configuration ---
 # IMPORTANT: In a real application, secure your API key using Streamlit secrets.
-# You can set it in .streamlit/secrets.toml like: GEMINI_API_KEY="your_api_key_here"
+# Create a .streamlit/secrets.toml file with: GEMINI_API_KEY="your_api_key_here"
 # Then access it via st.secrets["GEMINI_API_KEY"]
-GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Dummy key for demonstration. REPLACE THIS!
+GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Dummy key. REPLACE THIS!
 
 # Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
@@ -84,7 +84,9 @@ def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
 DUMMY_VEHICLES = generate_random_vehicles(num_vehicles=5000)
 
 # --- Simulate User Data for Dashboard (for a single dummy user) ---
-if 'dummy_user_data' not in st.session_state:
+# Check if dummy_user_data is already in session state AND if it has the 'loan_applications' key
+# This helps with initial load and updates, but for a guaranteed reset, see the st.session_state.clear() below.
+if 'dummy_user_data' not in st.session_state or 'loan_applications' not in st.session_state.dummy_user_data:
     st.session_state.dummy_user_data = {
         "name": "Juan Pérez",
         "email": "juan.perez@example.com",
@@ -103,6 +105,14 @@ if 'dummy_user_data' not in st.session_state:
 st.set_page_config(layout="wide", page_title="Finanzauto", initial_sidebar_state="expanded")
 
 st.title("🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento")
+
+# --- Temporary Reset for Development ---
+# This button helps clear session state during development to prevent KeyErrors
+# from stale data. REMOVE or COMMENT OUT in production!
+if st.sidebar.button("Reiniciar Datos de la App (Desarrollo)"):
+    st.session_state.clear()
+    st.cache_data.clear()
+    st.experimental_rerun() # Rerun the app after clearing state
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Menú Principal")
@@ -173,6 +183,7 @@ elif page == "Dashboard":
     st.header("📊 Dashboard del Usuario")
     st.info("¡Bienvenido, Juan Pérez! Aquí tienes un resumen de tu actividad en Finanzauto.")
 
+    # Ensure user_data is freshly loaded from session state (or re-initialized)
     user_data = st.session_state.dummy_user_data
 
     # --- Tabs for Loan Stages ---
@@ -182,11 +193,11 @@ elif page == "Dashboard":
     # Filter applications by stage for each tab
     applications_by_stage = {
         "Todas las Solicitudes": user_data["loan_applications"],
-        "En Análisis/Revisión": [app for app in user_data["loan_applications"] if app["stage"] == "Análisis Preliminar" or app["status"] == "En Revisión"],
-        "Documentos Pendientes": [app for app in user_data["loan_applications"] if app["stage"] == "Recopilación de Documentos"],
-        "Aprobadas": [app for app in user_data["loan_applications"] if app["status"] == "Aprobada"],
-        "Firmado/Desembolsado": [app for app in user_data["loan_applications"] if app["stage"] == "Firma de Contrato" or app["stage"] == "Desembolsado"],
-        "Rechazadas": [app for app in user_data["loan_applications"] if app["status"] == "Rechazada"]
+        "En Análisis/Revisión": [app for app in user_data["loan_applications"] if app.get("stage") == "Análisis Preliminar" or app.get("status") == "En Revisión"],
+        "Documentos Pendientes": [app for app in user_data["loan_applications"] if app.get("stage") == "Recopilación de Documentos"],
+        "Aprobadas": [app for app in user_data["loan_applications"] if app.get("status") == "Aprobada"],
+        "Firmado/Desembolsado": [app for app in user_data["loan_applications"] if app.get("stage") == "Firma de Contrato" or app.get("stage") == "Desembolsado"],
+        "Rechazadas": [app for app in user_data["loan_applications"] if app.get("status") == "Rechazada"]
     }
 
     for i, tab_title in enumerate(tab_titles):
@@ -195,8 +206,9 @@ elif page == "Dashboard":
             current_apps = applications_by_stage[tab_title]
             if current_apps:
                 for app in current_apps:
-                    status_emoji = "✅" if app["status"] == "Aprobada" else "⏳" if app["status"] == "En Revisión" else "❌"
-                    st.markdown(f"- **Solicitud {app['id']}:** Vehículo: {app['vehicle']} | Monto: ${app['amount']:,.2f} | Estado: **{status_emoji} {app['status']}** | Etapa: _{app['stage']}_ ({app['date']})")
+                    status_emoji = "✅" if app.get("status") == "Aprobada" else "⏳" if app.get("status") == "En Revisión" else "❌"
+                    # Using .get() for safety here too, though the dummy data should have these.
+                    st.markdown(f"- **Solicitud {app.get('id', 'N/A')}:** Vehículo: {app.get('vehicle', 'N/A')} | Monto: ${app.get('amount', 0):,.2f} | Estado: **{status_emoji} {app.get('status', 'Desconocido')}** | Etapa: _{app.get('stage', 'Desconocida')}_ ({app.get('date', 'N/A')})")
                     if "reason" in app:
                         st.info(f"    *Razón:* {app['reason']}")
                 st.markdown("---")
@@ -494,16 +506,16 @@ elif page == "Portal de Clientes":
 
     st.subheader("Mis Préstamos Actuales")
     # Filter for approved/active loans
-    active_loans = [app for app in user_data["loan_applications"] if app["status"] == "Aprobada" or app["stage"] == "Desembolsado" or app["stage"] == "Firma de Contrato"]
+    active_loans = [app for app in user_data["loan_applications"] if app.get("status") == "Aprobada" or app.get("stage") == "Desembolsado" or app.get("stage") == "Firma de Contrato"]
     if active_loans:
         for loan in active_loans:
-            st.markdown(f"**Préstamo {loan['id']}** para **{loan['vehicle']}**")
-            st.write(f"- Monto: ${loan['amount']:,.2f}")
-            st.write(f"- Estado: **{loan['status']}** / Etapa: **{loan['stage']}**")
-            st.write(f"- Fecha de Aprobación/Inicio: {loan['date']}")
+            st.markdown(f"**Préstamo {loan.get('id', 'N/A')}** para **{loan.get('vehicle', 'N/A')}**")
+            st.write(f"- Monto: ${loan.get('amount', 0):,.2f}")
+            st.write(f"- Estado: **{loan.get('status', 'Desconocido')}** / Etapa: **{loan.get('stage', 'Desconocida')}**")
+            st.write(f"- Fecha de Aprobación/Inicio: {loan.get('date', 'N/A')}")
             # Dummy details for a loan
             st.write(f"- Cuota Mensual Estimada: ${random.randint(500,1500):,.2f}")
-            st.write(f"- Saldo Pendiente (Dummy): ${random.randint(5000, loan['amount']-1000):,.2f}")
+            st.write(f"- Saldo Pendiente (Dummy): ${random.randint(5000, loan.get('amount', 50000)-1000):,.2f}") # Ensure amount is not zero
             st.markdown("---")
     else:
         st.write("No tienes préstamos activos en este momento.")
@@ -511,8 +523,8 @@ elif page == "Portal de Clientes":
     st.subheader("Historial de Solicitudes (Completo)")
     if user_data["loan_applications"]:
         for app in user_data["loan_applications"]:
-            status_emoji = "✅" if app["status"] == "Aprobada" else "⏳" if app["status"] == "En Revisión" else "❌"
-            st.markdown(f"- **{app['id']}:** {app['vehicle']} | Monto: ${app['amount']:,.2f} | Estado: **{status_emoji} {app['status']}** | Etapa: _{app['stage']}_ ({app['date']})")
+            status_emoji = "✅" if app.get("status") == "Aprobada" else "⏳" if app.get("status") == "En Revisión" else "❌"
+            st.markdown(f"- **{app.get('id', 'N/A')}:** {app.get('vehicle', 'N/A')} | Monto: ${app.get('amount', 0):,.2f} | Estado: **{status_emoji} {app.get('status', 'Desconocido')}** | Etapa: _{app.get('stage', 'Desconocida')}_ ({app.get('date', 'N/A')})")
             if "reason" in app:
                 st.info(f"    *Razón:* {app['reason']}")
         st.markdown("---")
@@ -530,14 +542,14 @@ elif page == "Portal de Asesores":
     ]
 
     st.subheader("Solicitudes Pendientes de Revisión")
-    pending_applications = [app for app in all_applications if app["status"] == "En Revisión" or app["status"] == "Pendiente" or app["stage"] == "Análisis Preliminar" or app["stage"] == "Recopilación de Documentos"]
+    pending_applications = [app for app in all_applications if app.get("status") == "En Revisión" or app.get("status") == "Pendiente" or app.get("stage") == "Análisis Preliminar" or app.get("stage") == "Recopilación de Documentos"]
     
     if pending_applications:
         for app in pending_applications:
-            st.markdown(f"**ID: {app['id']}** | **Vehículo:** {app.get('vehicle', 'N/A')} | **Monto:** ${app.get('amount', 0):,.2f}")
+            st.markdown(f"**ID: {app.get('id', 'N/A')}** | **Vehículo:** {app.get('vehicle', 'N/A')} | **Monto:** ${app.get('amount', 0):,.2f}")
             st.write(f"**Solicitante:** {app.get('applicant', st.session_state.dummy_user_data['name'])}")
-            st.write(f"**Estado:** {app['status']} | **Etapa:** {app['stage']} | **Fecha:** {app['date']}")
-            st.button(f"Revisar Solicitud {app['id']}", key=f"review_{app['id']}")
+            st.write(f"**Estado:** {app.get('status', 'Desconocido')} | **Etapa:** {app.get('stage', 'Desconocida')} | **Fecha:** {app.get('date', 'N/A')}")
+            st.button(f"Revisar Solicitud {app.get('id', 'N/A')}", key=f"review_{app.get('id', 'N/A')}")
             st.markdown("---")
     else:
         st.write("No hay solicitudes pendientes de revisión en este momento.")
