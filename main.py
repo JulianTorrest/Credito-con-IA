@@ -4,7 +4,9 @@ import random
 import os
 
 # --- Configuration ---
-GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Use Streamlit secrets in production!
+# In a real application, secure your API key using Streamlit secrets:
+# GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Dummy key for demonstration
 
 # Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
@@ -13,8 +15,8 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
 # --- Dummy Data Generation (Dynamic) ---
-@st.cache_data # Cache the generated data to avoid re-generating on every rerun
-def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
+@st.cache_data
+def generate_random_vehicles(num_vehicles=5000):
     makes = ["Toyota", "Honda", "Ford", "Chevrolet", "BMW", "Mercedes-Benz", "Audi", "Tesla", "Hyundai", "Kia", "Nissan", "Mazda", "Subaru", "Volvo", "Volkswagen"]
     models_by_make = {
         "Toyota": ["Corolla", "Camry", "RAV4", "Highlander", "Tacoma", "Sienna", "Prius"],
@@ -45,21 +47,21 @@ def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
     vehicles = []
     for i in range(1, num_vehicles + 1):
         make = random.choice(makes)
-        model = random.choice(models_by_make.get(make, ["Generic Model"])) # Get model specific to make, or default
+        model = random.choice(models_by_make.get(make, ["Generic Model"]))
         year = random.randint(2018, 2025)
         
         base_price = random.randint(15000, 80000)
         if "BMW" in make or "Mercedes-Benz" in make or "Audi" in make or "Tesla" in make:
             base_price = random.randint(35000, 120000)
-        price = base_price + (year - 2018) * random.uniform(500, 2000) + random.uniform(-1000, 1000) # Adjust price by year
-        price = max(10000, price) # Ensure minimum price
+        price = base_price + (year - 2018) * random.uniform(500, 2000) + random.uniform(-1000, 1000)
+        price = max(10000, price)
         
         v_type = random.choice(vehicle_types)
         fuel = random.choice(fuel_types)
         
         if v_type == "EV":
             fuel = "Electric"
-            price = random.randint(35000, 90000) # EVs tend to be more expensive
+            price = random.randint(35000, 90000)
 
         num_features = random.randint(2, 6)
         selected_features = random.sample(common_features, num_features)
@@ -78,22 +80,22 @@ def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
         })
     return vehicles
 
-# Generate a large number of random vehicles
 DUMMY_VEHICLES = generate_random_vehicles(num_vehicles=5000)
 
 # --- Simulate User Data for Dashboard (for a single dummy user) ---
-# In a real app, this would come from a database after user login
 if 'dummy_user_data' not in st.session_state:
     st.session_state.dummy_user_data = {
         "name": "Juan Pérez",
         "email": "juan.perez@example.com",
         "loan_applications": [
-            {"id": "APP001", "vehicle": "Toyota RAV4 2023", "amount": 32000, "status": "Aprobada", "date": "2025-06-01"},
-            {"id": "APP002", "vehicle": "Ford F-150 2022", "amount": 45000, "status": "En Revisión", "date": "2025-07-10"},
-            {"id": "APP003", "vehicle": "Tesla Model 3 2024", "amount": 40000, "status": "Rechazada", "date": "2025-05-15", "reason": "Ingresos insuficientes"},
+            {"id": "APP001", "vehicle": "Toyota RAV4 2023", "amount": 32000, "status": "Aprobada", "stage": "Desembolsado", "date": "2025-06-01"},
+            {"id": "APP002", "vehicle": "Ford F-150 2022", "amount": 45000, "status": "En Revisión", "stage": "Análisis Preliminar", "date": "2025-07-10"},
+            {"id": "APP003", "vehicle": "Tesla Model 3 2024", "amount": 40000, "status": "Rechazada", "stage": "Análisis Preliminar", "date": "2025-05-15", "reason": "Ingresos insuficientes"},
+            {"id": "APP004", "vehicle": "Honda Civic 2024", "amount": 28000, "status": "En Revisión", "stage": "Recopilación de Documentos", "date": "2025-07-05"},
+            {"id": "APP005", "vehicle": "BMW X5 2023", "amount": 60000, "status": "Aprobada", "stage": "Firma de Contrato", "date": "2025-07-12"}
         ],
-        "favorite_vehicles": random.sample(DUMMY_VEHICLES, k=3), # Select 3 random vehicles as favorites
-        "recommended_vehicles": random.sample(DUMMY_VEHICLES, k=2) # Placeholder for AI recommendations
+        "favorite_vehicles": random.sample(DUMMY_VEHICLES, k=3),
+        "recommended_vehicles": random.sample(DUMMY_VEHICLES, k=2)
     }
 
 # --- Streamlit App Structure ---
@@ -109,12 +111,12 @@ page = st.sidebar.radio("Navegación", [
     "Simulador de Crédito",
     "Solicitud de Crédito",
     "Análisis Preliminar",
-    "Recomendador",
+    "Recomendador de Planes", # Renamed
     "Catálogo de Vehículos",
     "Comparador",
     "Subastas",
-    "Portal de Clientes",
-    "Portal de Asesores",
+    "Portal de Clientes", # No login
+    "Portal de Asesores", # No login
     "Blog"
 ])
 
@@ -148,12 +150,9 @@ if page == "Asistente AI":
                         elif role == "assistant":
                             gemini_messages.append({"role": "model", "parts": [content]})
                     
-                    # Ensure chat history is correctly formatted for Gemini
-                    if not gemini_messages: # Should not happen with prompt, but safety check
-                        response = model.generate_content(prompt)
+                    if not gemini_messages:
+                         response = model.generate_content(prompt)
                     else:
-                        # Exclude the very last user message from history if it's the current prompt
-                        # This prevents sending the prompt twice (once in history, once as current message)
                         if gemini_messages[-1]["role"] == "user" and gemini_messages[-1]["parts"][0] == prompt:
                              chat_history_for_gemini = gemini_messages[:-1]
                         else:
@@ -169,6 +168,7 @@ if page == "Asistente AI":
                     st.error(f"Lo siento, hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo. Error: {e}")
                     st.session_state.chat_history.append(("assistant", "Lo siento, hubo un error al procesar tu solicitud."))
 
+---
 
 elif page == "Dashboard":
     st.header("📊 Dashboard del Usuario")
@@ -176,16 +176,33 @@ elif page == "Dashboard":
 
     user_data = st.session_state.dummy_user_data
 
-    st.subheader("Estado de tus Solicitudes de Crédito")
-    if user_data["loan_applications"]:
-        for app in user_data["loan_applications"]:
-            status_emoji = "✅" if app["status"] == "Aprobada" else "⏳" if app["status"] == "En Revisión" else "❌"
-            st.markdown(f"- **Solicitud {app['id']}:** Vehículo: {app['vehicle']} | Monto: ${app['amount']:,.2f} | Estado: **{status_emoji} {app['status']}** ({app['date']})")
-            if "reason" in app:
-                st.info(f"    *Razón:* {app['reason']}")
-        st.markdown("---")
-    else:
-        st.write("No tienes solicitudes de crédito recientes.")
+    # --- Tabs for Loan Stages ---
+    tab_titles = ["Todas las Solicitudes", "En Análisis/Revisión", "Documentos Pendientes", "Aprobadas", "Firmado/Desembolsado", "Rechazadas"]
+    tabs = st.tabs(tab_titles)
+
+    # Filter applications by stage for each tab
+    applications_by_stage = {
+        "Todas las Solicitudes": user_data["loan_applications"],
+        "En Análisis/Revisión": [app for app in user_data["loan_applications"] if app["stage"] == "Análisis Preliminar" or app["status"] == "En Revisión"],
+        "Documentos Pendientes": [app for app in user_data["loan_applications"] if app["stage"] == "Recopilación de Documentos"],
+        "Aprobadas": [app for app in user_data["loan_applications"] if app["status"] == "Aprobada"],
+        "Firmado/Desembolsado": [app for app in user_data["loan_applications"] if app["stage"] == "Firma de Contrato" or app["stage"] == "Desembolsado"],
+        "Rechazadas": [app for app in user_data["loan_applications"] if app["status"] == "Rechazada"]
+    }
+
+    for i, tab_title in enumerate(tab_titles):
+        with tabs[i]:
+            st.subheader(f"Solicitudes: {tab_title}")
+            current_apps = applications_by_stage[tab_title]
+            if current_apps:
+                for app in current_apps:
+                    status_emoji = "✅" if app["status"] == "Aprobada" else "⏳" if app["status"] == "En Revisión" else "❌"
+                    st.markdown(f"- **Solicitud {app['id']}:** Vehículo: {app['vehicle']} | Monto: ${app['amount']:,.2f} | Estado: **{status_emoji} {app['status']}** | Etapa: _{app['stage']}_ ({app['date']})")
+                    if "reason" in app:
+                        st.info(f"    *Razón:* {app['reason']}")
+                st.markdown("---")
+            else:
+                st.write(f"No hay solicitudes en la etapa '{tab_title}' en este momento.")
 
     st.subheader("Tus Vehículos Favoritos")
     if user_data["favorite_vehicles"]:
@@ -196,16 +213,17 @@ elif page == "Dashboard":
     else:
         st.write("Aún no has marcado ningún vehículo como favorito.")
 
-    st.subheader("Recomendaciones Personalizadas para Ti")
+    st.subheader("Recomendaciones de Vehículos para Ti")
     st.write("Basado en tus intereses y actividad, estas son algunas recomendaciones:")
     if user_data["recommended_vehicles"]:
         for rec_car in user_data["recommended_vehicles"]:
             st.markdown(f"- **{rec_car['year']} {rec_car['make']} {rec_car['model']}** (Precio: ${rec_car['price']:,.2f})")
-            st.markdown(f"  *Ideal para: [Explicación generada por IA en la sección de Recomendador]*")
+            st.markdown(f"  *Ideal para: [Explicación generada por IA en la sección de Recomendador de Planes]*")
         st.markdown("---")
     else:
         st.write("No hay recomendaciones personalizadas en este momento. Explora el catálogo o usa el recomendador.")
 
+---
 
 elif page == "Simulador de Crédito":
     st.header("💰 Simulador de Crédito")
@@ -249,7 +267,6 @@ elif page == "Solicitud de Crédito":
             phone = st.text_input("Teléfono", key="app_phone")
 
         st.subheader("Información Financiera")
-        # Store these in session state for Preliminary Analysis to access
         st.session_state.income = st.number_input("Ingresos Mensuales Netos ($)", min_value=0, value=2000, key="app_income")
         st.session_state.existing_debts = st.number_input("Deudas Mensuales Existentes ($)", min_value=0, value=500, key="app_existing_debts")
         st.session_state.desired_vehicle_price = st.number_input("Precio del Vehículo Deseado ($)", min_value=0, value=30000, key="app_desired_vehicle_price")
@@ -260,8 +277,6 @@ elif page == "Solicitud de Crédito":
                 st.warning("Por favor, completa todos los campos obligatorios.")
             else:
                 st.success(f"Solicitud recibida para {first_name} {last_name}. Un asesor se pondrá en contacto pronto.")
-                # You could also append this to st.session_state.dummy_user_data['loan_applications']
-                # for dynamic display on the dashboard, but for simplicity, we just display it here.
                 st.json({
                     "nombre": first_name,
                     "apellido": last_name,
@@ -276,7 +291,6 @@ elif page == "Análisis Preliminar":
     st.header("🔎 Análisis Preliminar de Crédito")
     st.info("Aquí se mostrará un análisis automatizado inicial de tu elegibilidad, basado en la información que proporciones en la sección de 'Solicitud de Crédito'.")
 
-    # Retrieve data from session state (populated by "Solicitud de Crédito" form)
     income = st.session_state.get('income', 0)
     existing_debts = st.session_state.get('existing_debts', 0)
     desired_vehicle_price = st.session_state.get('desired_vehicle_price', 0)
@@ -292,20 +306,17 @@ elif page == "Análisis Preliminar":
         if st.button("Realizar Análisis Preliminar con IA"):
             with st.spinner("Analizando tus datos con IA..."):
                 try:
-                    # Define dummy credit rules for Gemini to interpret
                     credit_rules_prompt = """
                     Reglas de elegibilidad generales para un préstamo automotriz:
-                    1. La relación Ingresos/Deudas (DTI) después de la posible cuota del vehículo idealmente no debe exceder el 40%.
+                    1. La relación Ingresos/Deudas (DTI) después de la posible cuota del vehículo idealmente no debe exceder el 40% del ingreso neto.
                     2. Un buen indicador de capacidad de pago es que el ingreso neto sea al menos 3 veces el pago mensual estimado.
-                    3. El precio del vehículo deseado no debe ser excesivamente alto en comparación con los ingresos.
+                    3. El precio del vehículo deseado no debe ser excesivamente alto en comparación con los ingresos (e.g., no más de 3 veces el ingreso anual).
                     4. Se valora un ingreso neto superior a $1,500 USD mensuales.
+                    5. El total de deudas (existentes + pago estimado del vehículo) no debe superar el 60% del ingreso neto.
                     """
 
-                    # Estimate a dummy monthly payment for the desired vehicle based on a generic rate/term
-                    # This is a simplification; a real system would use a more accurate estimate or credit scoring.
                     estimated_monthly_payment = (desired_vehicle_price * 0.08 / 12) / (1 - (1 + 0.08 / 12)**-(60)) # 8% annual, 60 months
 
-                    # Craft the prompt for Gemini
                     prompt_for_gemini = f"""
                     Eres un analista de crédito de Finanzauto. Necesito tu análisis preliminar de la elegibilidad de un cliente para un préstamo automotriz.
                     Aquí están los datos del cliente:
@@ -330,47 +341,62 @@ elif page == "Análisis Preliminar":
                 except Exception as e:
                     st.error(f"Lo siento, hubo un error al realizar el análisis. Por favor, inténtalo de nuevo. Error: {e}")
 
+---
 
-elif page == "Recomendador":
-    st.header("💡 Recomendador de Vehículos")
-    st.info("Describe el vehículo de tus sueños y te ayudaremos a encontrarlo.")
-    user_preferences = st.text_area("Cuéntanos qué tipo de vehículo buscas (ej: 'Necesito un SUV familiar, eficiente en combustible y con buen espacio de carga'):")
+elif page == "Recomendador de Planes": # Renamed page
+    st.header("💡 Recomendador de Planes Financieros")
+    st.info("Cuéntanos sobre tus objetivos y te ayudaremos a encontrar el plan de financiamiento ideal.")
     
-    if st.button("Buscar Recomendaciones"):
-        if user_preferences:
-            st.write(f"Analizando tus preferencias: '{user_preferences}'...")
+    plan_preferences = st.text_area(
+        "Describe tu situación financiera y tus objetivos para un préstamo automotriz (ej: 'Busco la cuota mensual más baja posible', 'Quiero pagar el préstamo rápidamente', 'Necesito un plan flexible con opciones de refinanciamiento'):",
+        key="plan_reco_prompt"
+    )
+
+    if st.button("Buscar Recomendaciones de Planes"):
+        if plan_preferences:
+            st.write(f"Analizando tus preferencias de plan: '{plan_preferences}'...")
             
-            with st.spinner("Buscando recomendaciones con IA..."):
+            with st.spinner("Buscando recomendaciones de planes con IA..."):
                 try:
-                    # Craft a prompt for Gemini to act as a recommender
+                    # Define dummy loan plan types for Gemini to consider
+                    dummy_loan_plans = [
+                        {"name": "Plan Estándar", "description": "Tasa fija, plazos de 3 a 6 años, pagos mensuales consistentes."},
+                        {"name": "Plan Flexi-Pago", "description": "Tasa fija, plazos extendidos hasta 7 años, pagos iniciales más bajos con opción de abonos extraordinarios."},
+                        {"name": "Plan Joven Conductor", "description": "Dirigido a primeros compradores, tasas competitivas, posibilidad de incluir seguro en cuota."},
+                        {"name": "Plan Eco-Auto", "description": "Beneficios especiales para vehículos híbridos y eléctricos, tasas preferenciales, plazos de 5 a 8 años."},
+                        {"name": "Plan Plus", "description": "Para clientes con buen historial, tasas muy bajas, plazos cortos a medios (1-4 años), requiere enganche alto."}
+                    ]
+
                     prompt_for_gemini = f"""
-                    Eres un experto en vehículos y finanzas. Te proporcionaré una descripción de las preferencias de un cliente para un vehículo.
-                    Basado en la siguiente lista de vehículos disponibles, por favor, recomienda 3-5 vehículos que mejor se ajusten a sus necesidades.
-                    Para cada recomendación, explica brevemente por qué es una buena opción basada en sus preferencias.
+                    Eres un asesor financiero de Finanzauto especializado en préstamos automotrices.
+                    Un cliente te ha dado sus preferencias para un plan de financiamiento.
+                    Basándote en sus preferencias y en la siguiente descripción de nuestros planes de préstamo dummy, recomienda 2-3 planes que mejor se adapten a sus necesidades.
+                    Explica por qué cada plan es una buena opción para sus objetivos.
 
-                    Preferencias del cliente: "{user_preferences}"
+                    Preferencias del cliente: "{plan_preferences}"
 
-                    Lista de vehículos disponibles (solo los primeros 200 para relevancia y evitar sobrecarga de tokens):
-                    {DUMMY_VEHICLES[:200]}
+                    Nuestros planes de préstamo disponibles:
+                    {dummy_loan_plans}
 
                     Formato de respuesta deseado:
-                    **Recomendaciones de Vehículos:**
-                    - **[Año] [Marca] [Modelo]:** [Breve explicación de por qué es recomendado].
-                    - **[Año] [Marca] [Modelo]:** [Breve explicación de por qué es recomendado].
+                    **Recomendaciones de Planes de Financiamiento:**
+                    - **[Nombre del Plan]:** [Breve explicación de por qué es recomendado para las preferencias del cliente].
+                    - **[Nombre del Plan]:** [Breve explicación de por qué es recomendado para las preferencias del cliente].
                     ...
                     """
                     
                     response = model.generate_content(prompt_for_gemini)
                     ai_recommendations = response.text
                     
-                    st.subheader("Recomendaciones de la IA:")
+                    st.subheader("Recomendaciones de Planes de Financiamiento por la IA:")
                     st.markdown(ai_recommendations)
                     
                 except Exception as e:
-                    st.error(f"Lo siento, hubo un error al generar las recomendaciones. Por favor, inténtalo de nuevo. Error: {e}")
+                    st.error(f"Lo siento, hubo un error al generar las recomendaciones de planes. Por favor, inténtalo de nuevo. Error: {e}")
         else:
-            st.warning("Por favor, describe tus preferencias para recibir recomendaciones.")
+            st.warning("Por favor, describe tus preferencias para recibir recomendaciones de planes.")
 
+---
 
 elif page == "Catálogo de Vehículos":
     st.header("🚗 Catálogo de Vehículos")
@@ -421,6 +447,7 @@ elif page == "Catálogo de Vehículos":
     if len(filtered_vehicles) > display_limit:
         st.info(f"Mostrando los primeros {display_limit} vehículos. Usa los filtros para refinar tu búsqueda.")
 
+---
 
 elif page == "Comparador":
     st.header("⚖️ Comparador de Vehículos")
@@ -460,27 +487,82 @@ elif page == "Comparador":
         else:
             st.warning("Por favor, selecciona dos vehículos para comparar.")
 
+---
 
 elif page == "Subastas":
     st.header("🔨 Subastas de Vehículos")
     st.info("Participa en nuestras subastas de vehículos exclusivos.")
     st.write("No hay subastas activas en este momento (dummy).")
 
+---
 
 elif page == "Portal de Clientes":
     st.header("👤 Portal de Clientes")
-    st.info("Acceso para clientes existentes para ver el estado de sus préstamos y gestionar su cuenta.")
-    st.text_input("Usuario")
-    st.text_input("Contraseña", type="password")
-    st.button("Ingresar (Dummy)")
+    st.info("Bienvenido al portal de clientes. Aquí puedes gestionar tus préstamos y ver tu historial.")
+    user_data = st.session_state.dummy_user_data
+    
+    st.subheader(f"Información de Cuenta de {user_data['name']}")
+    st.write(f"**Correo Electrónico:** {user_data['email']}")
+    st.markdown("---")
 
+    st.subheader("Mis Préstamos Actuales")
+    # Filter for approved/active loans
+    active_loans = [app for app in user_data["loan_applications"] if app["status"] == "Aprobada" or app["stage"] == "Desembolsado" or app["stage"] == "Firma de Contrato"]
+    if active_loans:
+        for loan in active_loans:
+            st.markdown(f"**Préstamo {loan['id']}** para **{loan['vehicle']}**")
+            st.write(f"- Monto: ${loan['amount']:,.2f}")
+            st.write(f"- Estado: **{loan['status']}** / Etapa: **{loan['stage']}**")
+            st.write(f"- Fecha de Aprobación/Inicio: {loan['date']}")
+            # Dummy details for a loan
+            st.write(f"- Cuota Mensual Estimada: ${random.randint(500,1500):,.2f}")
+            st.write(f"- Saldo Pendiente (Dummy): ${random.randint(5000, loan['amount']-1000):,.2f}")
+            st.markdown("---")
+    else:
+        st.write("No tienes préstamos activos en este momento.")
+
+    st.subheader("Historial de Solicitudes (Completo)")
+    if user_data["loan_applications"]:
+        for app in user_data["loan_applications"]:
+            status_emoji = "✅" if app["status"] == "Aprobada" else "⏳" if app["status"] == "En Revisión" else "❌"
+            st.markdown(f"- **{app['id']}:** {app['vehicle']} | Monto: ${app['amount']:,.2f} | Estado: **{status_emoji} {app['status']}** | Etapa: _{app['stage']}_ ({app['date']})")
+            if "reason" in app:
+                st.info(f"    *Razón:* {app['reason']}")
+        st.markdown("---")
+    else:
+        st.write("No hay historial de solicitudes.")
+
+---
 
 elif page == "Portal de Asesores":
     st.header("💼 Portal de Asesores")
-    st.info("Acceso exclusivo para nuestros asesores de Finanzauto.")
-    st.text_input("Usuario del Asesor")
-    st.text_input("Contraseña del Asesor", type="password")
-    st.button("Ingresar (Dummy)")
+    st.info("Bienvenido al portal de asesores. Aquí puedes gestionar solicitudes y clientes.")
+    
+    # Simulate a list of all applications for advisors to review
+    all_applications = st.session_state.dummy_user_data["loan_applications"] + [
+        {"id": "ADV001", "vehicle": "Audi Q5 2023", "amount": 55000, "status": "Pendiente", "stage": "Análisis Preliminar", "date": "2025-07-13", "applicant": "María García"},
+        {"id": "ADV002", "vehicle": "Volkswagen ID.4 2024", "amount": 42000, "status": "Pendiente", "stage": "Documentación Enviada", "date": "2025-07-11", "applicant": "Pedro Gómez"}
+    ]
+
+    st.subheader("Solicitudes Pendientes de Revisión")
+    pending_applications = [app for app in all_applications if app["status"] == "En Revisión" or app["status"] == "Pendiente" or app["stage"] == "Análisis Preliminar" or app["stage"] == "Recopilación de Documentos"]
+    
+    if pending_applications:
+        for app in pending_applications:
+            st.markdown(f"**ID: {app['id']}** | **Vehículo:** {app.get('vehicle', 'N/A')} | **Monto:** ${app.get('amount', 0):,.2f}")
+            st.write(f"**Solicitante:** {app.get('applicant', st.session_state.dummy_user_data['name'])}") # If applicant not specified, use dummy user name
+            st.write(f"**Estado:** {app['status']} | **Etapa:** {app['stage']} | **Fecha:** {app['date']}")
+            st.button(f"Revisar Solicitud {app['id']}", key=f"review_{app['id']}")
+            st.markdown("---")
+    else:
+        st.write("No hay solicitudes pendientes de revisión en este momento.")
+
+    st.subheader("Estadísticas de Asesores (Dummy)")
+    st.metric(label="Solicitudes Aprobadas (Mes)", value="15")
+    st.metric(label="Solicitudes en Proceso", value="8")
+    st.metric(label="Monto Total Aprobado (Mes)", value="$450,000")
+
+---
 
 elif page == "Blog":
     st.header("✍️ Blog de Finanzauto")
