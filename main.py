@@ -1,29 +1,36 @@
+import os
 import streamlit as st
 import google.generativeai as genai
+
+# Ya no necesitamos 'from dotenv import load_dotenv' ni 'load_dotenv()'
+# cuando estamos en Streamlit Cloud y usando sus Secrets.
+
+# --- Configuración de la API de Gemini ---
+# La clave API se debe configurar en los 'Secrets' de tu app en Streamlit Cloud
+# bajo el nombre 'GOOGLE_API_KEY'.
+try:
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+except KeyError:
+    st.error("⚠️ Error: La clave API de Gemini ('GOOGLE_API_KEY') no está configurada en los Secrets de Streamlit Cloud.")
+    st.info("Por favor, ve a la configuración de tu app en Streamlit Cloud > Secrets y añade GOOGLE_API_KEY='tu_clave_aqui'")
+    st.stop() # Detiene la ejecución de la aplicación si la clave no se encuentra.
+
+genai.configure(api_key=GOOGLE_API_KEY)
+
+# --- El resto de tus imports y código ---
 import random
-import os
 import math
 from datetime import datetime, timedelta
 import fitz # PyMuPDF for PDF processing
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from dotenv import load_dotenv
 import sys
+
+# Estas líneas son cruciales para el problema de sqlite3 con ChromaDB
 __import__('pysqlite3')
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
-# Load environment variables from .env file (if using locally)
-load_dotenv()
-
-# --- Configuration ---
-# IMPORTANTE: Reemplaza esto con tu clave API real o usa st.secrets en producción
-# Para desarrollo local, puedes ponerla aquí o en un archivo .env
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Intenta cargar desde .env
-if not GEMINI_API_KEY:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] if "GEMINI_API_KEY" in st.secrets else "TU_CLAVE_API_AQUI" # Fallback para Streamlit Cloud o si no está en .env
-
-genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize the generative model with Gemini 1.5 Flash
 try:
