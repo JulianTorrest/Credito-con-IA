@@ -4,9 +4,10 @@ import random
 import os
 
 # --- Configuration ---
-# In a real application, secure your API key using Streamlit secrets:
-# GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Dummy key for demonstration
+# IMPORTANT: In a real application, secure your API key using Streamlit secrets.
+# You can set it in .streamlit/secrets.toml like: GEMINI_API_KEY="your_api_key_here"
+# Then access it via st.secrets["GEMINI_API_KEY"]
+GEMINI_API_KEY = "AIzaSyCipgFWBlaeJBuAweqAh2cnOCVs1K9pLI0" # Dummy key for demonstration. REPLACE THIS!
 
 # Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
@@ -15,8 +16,8 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
 # --- Dummy Data Generation (Dynamic) ---
-@st.cache_data
-def generate_random_vehicles(num_vehicles=5000):
+@st.cache_data # Cache the generated data to avoid re-generating on every rerun
+def generate_random_vehicles(num_vehicles=5000): # Default to 5000 vehicles
     makes = ["Toyota", "Honda", "Ford", "Chevrolet", "BMW", "Mercedes-Benz", "Audi", "Tesla", "Hyundai", "Kia", "Nissan", "Mazda", "Subaru", "Volvo", "Volkswagen"]
     models_by_make = {
         "Toyota": ["Corolla", "Camry", "RAV4", "Highlander", "Tacoma", "Sienna", "Prius"],
@@ -41,7 +42,7 @@ def generate_random_vehicles(num_vehicles=5000):
         "Bluetooth", "Backup Camera", "Sunroof", "Leather Seats", "Navigation System",
         "Heated Seats", "Lane Assist", "Adaptive Cruise Control", "AWD", "Keyless Entry",
         "Apple CarPlay", "Android Auto", "Blind Spot Monitoring", "Towing Package",
-        "Premium Sound System", "Panoramic Roof", "Automatic Emergency Braking"
+        "Premium Sound System", "Panoramic Roof", "Automatic Emergency BrakING"
     ]
 
     vehicles = []
@@ -168,8 +169,6 @@ if page == "Asistente AI":
                     st.error(f"Lo siento, hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo. Error: {e}")
                     st.session_state.chat_history.append(("assistant", "Lo siento, hubo un error al procesar tu solicitud."))
 
----
-
 elif page == "Dashboard":
     st.header("📊 Dashboard del Usuario")
     st.info("¡Bienvenido, Juan Pérez! Aquí tienes un resumen de tu actividad en Finanzauto.")
@@ -222,8 +221,6 @@ elif page == "Dashboard":
         st.markdown("---")
     else:
         st.write("No hay recomendaciones personalizadas en este momento. Explora el catálogo o usa el recomendador.")
-
----
 
 elif page == "Simulador de Crédito":
     st.header("💰 Simulador de Crédito")
@@ -341,8 +338,6 @@ elif page == "Análisis Preliminar":
                 except Exception as e:
                     st.error(f"Lo siento, hubo un error al realizar el análisis. Por favor, inténtalo de nuevo. Error: {e}")
 
----
-
 elif page == "Recomendador de Planes": # Renamed page
     st.header("💡 Recomendador de Planes Financieros")
     st.info("Cuéntanos sobre tus objetivos y te ayudaremos a encontrar el plan de financiamiento ideal.")
@@ -396,8 +391,6 @@ elif page == "Recomendador de Planes": # Renamed page
         else:
             st.warning("Por favor, describe tus preferencias para recibir recomendaciones de planes.")
 
----
-
 elif page == "Catálogo de Vehículos":
     st.header("🚗 Catálogo de Vehículos")
     st.info(f"Explora nuestra selección de {len(DUMMY_VEHICLES):,} vehículos disponibles.")
@@ -447,8 +440,6 @@ elif page == "Catálogo de Vehículos":
     if len(filtered_vehicles) > display_limit:
         st.info(f"Mostrando los primeros {display_limit} vehículos. Usa los filtros para refinar tu búsqueda.")
 
----
-
 elif page == "Comparador":
     st.header("⚖️ Comparador de Vehículos")
     st.info("Selecciona dos vehículos para comparar sus características lado a lado.")
@@ -487,14 +478,10 @@ elif page == "Comparador":
         else:
             st.warning("Por favor, selecciona dos vehículos para comparar.")
 
----
-
 elif page == "Subastas":
     st.header("🔨 Subastas de Vehículos")
     st.info("Participa en nuestras subastas de vehículos exclusivos.")
     st.write("No hay subastas activas en este momento (dummy).")
-
----
 
 elif page == "Portal de Clientes":
     st.header("👤 Portal de Clientes")
@@ -532,8 +519,6 @@ elif page == "Portal de Clientes":
     else:
         st.write("No hay historial de solicitudes.")
 
----
-
 elif page == "Portal de Asesores":
     st.header("💼 Portal de Asesores")
     st.info("Bienvenido al portal de asesores. Aquí puedes gestionar solicitudes y clientes.")
@@ -550,7 +535,7 @@ elif page == "Portal de Asesores":
     if pending_applications:
         for app in pending_applications:
             st.markdown(f"**ID: {app['id']}** | **Vehículo:** {app.get('vehicle', 'N/A')} | **Monto:** ${app.get('amount', 0):,.2f}")
-            st.write(f"**Solicitante:** {app.get('applicant', st.session_state.dummy_user_data['name'])}") # If applicant not specified, use dummy user name
+            st.write(f"**Solicitante:** {app.get('applicant', st.session_state.dummy_user_data['name'])}")
             st.write(f"**Estado:** {app['status']} | **Etapa:** {app['stage']} | **Fecha:** {app['date']}")
             st.button(f"Revisar Solicitud {app['id']}", key=f"review_{app['id']}")
             st.markdown("---")
@@ -561,8 +546,6 @@ elif page == "Portal de Asesores":
     st.metric(label="Solicitudes Aprobadas (Mes)", value="15")
     st.metric(label="Solicitudes en Proceso", value="8")
     st.metric(label="Monto Total Aprobado (Mes)", value="$450,000")
-
----
 
 elif page == "Blog":
     st.header("✍️ Blog de Finanzauto")
