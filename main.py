@@ -1,9 +1,21 @@
 import os
 import streamlit as st
 import google.generativeai as genai
+import random
+import math
+from datetime import datetime, timedelta
+import fitz # PyMuPDF for PDF processing
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI # ¡Importante! LangChain LLM
+import sys
+from langchain_core.messages import HumanMessage
+from langchain_core.documents import Document # Importar Document para crear objetos con metadatos
 
-# Ya no necesitamos 'from dotenv import load_dotenv' ni 'load_dotenv()'
-# cuando estamos en Streamlit Cloud y usando sus Secrets.
+# --- Solución para el error de sqlite3 con ChromaDB en entornos como Streamlit Cloud ---
+# Esto asegura que ChromaDB use una versión compatible de sqlite3.
+__import__('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 # --- Configuración de la API de Gemini ---
 # La clave API se debe configurar en los 'Secrets' de tu app en Streamlit Cloud
@@ -15,50 +27,196 @@ except KeyError:
     st.info("Por favor, ve a la configuración de tu app en Streamlit Cloud > Secrets y añade GOOGLE_API_KEY='tu_clave_aqui'")
     st.stop() # Detiene la ejecución de la aplicación si la clave no se encuentra.
 
+# Configura la API de Google Generative AI con la clave obtenida
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# --- El resto de tus imports y código ---
-import random
-import math
-from datetime import datetime, timedelta
-import fitz # PyMuPDF for PDF processing
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import sys
+# --- Constantes y Directorios ---
+# Define el directorio donde se almacenará la base de datos vectorial de ChromaDB.
+CHROMA_DB_DIR = "chroma_db"
+# Asegura que el directorio exista. Si no, lo crea.
+if not os.path.exists(CHROMA_DB_DIR):
+    os.makedirs(CHROMA_DB_DIR)
 
-# Estas líneas son cruciales para el problema de sqlite3 con ChromaDB
-__import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# --- Inicialización de Modelos Gemini (Global para toda la app) ---
+
+# Modelo de Embeddings para convertir texto en vectores. Cacheada para eficiencia.
+# 'models/embedding-001' es el modelo recomendado para embeddings.
+@st.cache_resource
+def get_embeddings_model():
+    """
+    Inicializa y devuelve el modelo de embeddings de Google Generative AI.
+    """
+    return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+
+# Modelo de Lenguaje Grande (LLM) para la generación de respuestas generales (no RAG)
+# y para el Simulador de Escenarios, Asesor de Mantenimiento, Valoración, etc.
+# Usamos 'gemini-1.5-flash' como lo tenías originalmente para estas tareas rápidas.
+@st.cache_resource
+def get_general_llm_model():
+    """
+    Inicializa y devuelve el modelo de chat de Google Generative AI para tareas generales.
+    """
+    return genai.GenerativeModel('gemini-1.5-flash')
+
+# Modelo de Lenguaje Grande (LLM) para la generación de respuestas RAG. Cacheada para eficiencia.
+# Usamos 'gemini-1.5-pro' para las capacidades avanzadas de RAG.
+@st.cache_resource
+def get_rag_llm_model():
+    """
+    Inicializa y devuelve el modelo de chat de Google Generative AI para RAG (ChatGoogleGenerativeAI).
+    """
+    return ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3)
 
 
-# Initialize the generative model with Gemini 1.5 Flash
+# Inicialización de modelos al inicio de la aplicación
 try:
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    # Initialize the embeddings model
-    embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    general_llm_model = get_general_llm_model()
+    embeddings_model = get_embeddings_model()
+    rag_llm_model = get_rag_llm_model() # Nuevo LLM específico para RAG
 except Exception as e:
-    st.error(f"❌ **Error al cargar el modelo Gemini o embeddings:** {e}")
-    st.info("Asegúrate de que 'gemini-1.5-flash' y 'models/embedding-001' estén disponibles y que tu clave API sea correcta.")
-    st.stop() # Stop execution if models cannot be loaded
+    st.error(f"❌ **Error al cargar los modelos Gemini:** {e}")
+    st.info("Asegúrate de que tus modelos estén disponibles y que tu clave API sea correcta.")
+    st.stop() # Detiene la ejecución si los modelos no se pueden cargar.
 
 # --- ChromaDB Setup ---
-CHROMA_DB_DIR = "chroma_db" # Directorio para almacenar la base de datos vectorial
 
+# Función para obtener o crear la base de datos vectorial Chroma. Cacheada para eficiencia.
 @st.cache_resource
-def get_vector_store():
-    """Initializes and returns the ChromaDB vector store."""
+def get_vector_store(embeddings_model_param): # Aceptar el modelo de embeddings como parámetro
+    """
+    Carga una base de datos vectorial Chroma existente o crea una nueva si no existe.
+    Utiliza el modelo de embeddings configurado.
+    """
     try:
-        # Attempt to load an existing ChromaDB instance
-        vector_store = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings_model)
-        st.success(f"Cargada base de datos vectorial existente de '{CHROMA_DB_DIR}'. Documentos cargados: {vector_store._collection.count()}")
-    except Exception:
-        # If loading fails (e.g., directory doesn't exist or is empty), create a new one
-        vector_store = Chroma.from_texts(texts=[], embedding=embeddings_model, persist_directory=CHROMA_DB_DIR)
-        st.info(f"Creada nueva base de datos vectorial en '{CHROMA_DB_DIR}'.")
+        # Intenta cargar la base de datos vectorial existente desde el directorio persistente.
+        vector_store = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings_model_param)
+        # Verifica si la base de datos cargada contiene documentos.
+        if vector_store._collection.count() == 0:
+            st.warning("La base de datos vectorial está vacía. Por favor, carga y procesa documentos en la sección de 'Ingesta de Documentos (RAG)'.")
+        else:
+            st.success(f"Cargada base de datos vectorial existente de '{CHROMA_DB_DIR}' con {vector_store._collection.count()} documentos/fragmentos.")
+    except Exception as e:
+        # Si ocurre un error al cargar (ej., directorio no existe, está vacío o corrupto), crea una nueva.
+        st.info(f"Creando nueva base de datos vectorial en '{CHROMA_DB_DIR}'.")
+        # Es crucial inicializar Chroma con un embedding_function incluso si no hay textos iniciales.
+        vector_store = Chroma(embedding_function=embeddings_model_param, persist_directory=CHROMA_DB_DIR)
     return vector_store
 
-vector_store = get_vector_store()
+# Inicialización de la base de datos vectorial con el modelo de embeddings.
+vector_store = get_vector_store(embeddings_model)
+
+# --- Funciones de Procesamiento de Documentos (RAG) ---
+
+def extract_text_from_pdf(pdf_file):
+    """
+    Extrae texto de un archivo PDF subido.
+    Utiliza PyMuPDF (fitz) para el procesamiento.
+    """
+    doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
+
+def get_text_chunks(text, file_name="unknown_document"):
+    """
+    Divide el texto largo en fragmentos más pequeños (chunks) para el procesamiento.
+    Cada chunk se convierte en un objeto Document con metadatos, incluyendo el nombre del archivo.
+    """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,      # Tamaño máximo de cada fragmento
+        chunk_overlap=200,    # Superposición entre fragmentos para mantener contexto
+        length_function=len   # Función para calcular la longitud de los fragmentos
+    )
+    # Divide el texto en fragmentos.
+    chunks = text_splitter.split_text(text)
+    # Crea una lista de objetos Document, cada uno con el contenido del fragmento y metadatos.
+    documents = [Document(page_content=chunk, metadata={"source": file_name}) for chunk in chunks]
+    return documents
+
+def process_and_save_document(uploaded_file, vector_store):
+    """
+    Procesa un archivo subido (PDF, TXT, MD): extrae texto, lo divide en chunks, genera embeddings
+    y guarda los documentos (chunks) con sus metadatos en la base de datos vectorial.
+    """
+    try:
+        file_type = uploaded_file.type
+        raw_text = ""
+
+        if file_type == "application/pdf":
+            raw_text = extract_text_from_pdf(uploaded_file)
+            st.write("PDF leído exitosamente.")
+        elif file_type == "text/plain" or file_type == "text/markdown":
+            raw_text = uploaded_file.read().decode("utf-8")
+            st.write("Archivo de texto leído exitosamente.")
+        else:
+            st.error("Tipo de archivo no soportado para ingesta RAG. Por favor, sube PDF, TXT o MD.")
+            return False
+
+        if not raw_text:
+            st.error("No se pudo extraer contenido del documento.")
+            return False
+
+        # Obtiene los chunks como objetos Document, pasando el nombre del archivo como metadato.
+        documents_with_metadata = get_text_chunks(raw_text, uploaded_file.name)
+
+        st.write(f"Generando embeddings para {len(documents_with_metadata)} fragmentos de texto...")
+        # Añade los objetos Document (con metadatos) a la base de datos vectorial.
+        vector_store.add_documents(documents_with_metadata)
+        vector_store.persist() # Asegura que los cambios se guarden en disco.
+        st.success(f"Documento '{uploaded_file.name}' procesado y guardado en la DB Vectorial.")
+        return True
+    except Exception as e:
+        st.error(f"Error al procesar o guardar el documento: {e}")
+        return False
+
+def get_rag_response(user_query, vector_store, llm_model_for_rag):
+    """
+    Genera una respuesta utilizando la técnica RAG (Retrieval Augmented Generation).
+    1. Busca documentos relevantes en la DB vectorial.
+    2. Combina los documentos con la pregunta del usuario para formar un prompt contextual.
+    3. Envía el prompt al LLM (específico para RAG) para obtener una respuesta.
+    """
+    try:
+        # Recupera los 3 documentos más relevantes de la DB vectorial basados en la consulta del usuario.
+        docs = vector_store.similarity_search(user_query, k=3) 
+        
+        # Recopila los nombres de los archivos fuente únicos para mostrar al usuario.
+        unique_sources = set()
+        for doc in docs:
+            if 'source' in doc.metadata:
+                unique_sources.add(doc.metadata['source'])
+        
+        if unique_sources:
+            st.info(f"🔎 Documentos relevantes encontrados: {list(unique_sources)}")
+        else:
+            st.warning("🤷‍♀️ No se encontraron documentos relevantes en la base de datos para esta consulta. Respondiendo solo con conocimiento general.")
+
+        # Combina el contenido de los documentos recuperados en una única cadena de contexto.
+        context = "\n\n".join([doc.page_content for doc in docs])
+
+        # Crea el prompt para el modelo Gemini, incluyendo instrucciones, el contexto y la pregunta.
+        prompt = f"""
+        Eres un asistente amable de Finanzauto especializado en responder preguntas sobre nuestros servicios y documentos internos.
+        Utiliza **solo la siguiente información contextual** para responder a la pregunta.
+        Si no sabes la respuesta basándote en el contexto proporcionado, simplemente di "Lo siento, no puedo encontrar la respuesta a esa pregunta en los documentos disponibles."
+        Sé conciso y claro en tus respuestas.
+
+        Contexto:
+        {context}
+
+        Pregunta del usuario: {user_query}
+        """
+
+        # Genera la respuesta utilizando el modelo de lenguaje (LLM).
+        # Para ChatGoogleGenerativeAI, usa .invoke(prompt)
+        response = llm_model_for_rag.invoke(prompt)
+        return response.content # Devuelve solo el contenido de la respuesta del LLM.
+    except Exception as e:
+        # Captura y muestra cualquier error que ocurra durante el proceso RAG.
+        st.error(f"Lo siento, hubo un error al procesar tu solicitud con RAG. Por favor, asegúrate de que haya documentos en la DB y que el modelo de embeddings funcione. Error: {e}")
+        return "No pude generar una respuesta debido a un error interno."
+
 
 # --- Dummy Data Generation (Dynamic) ---
 @st.cache_data
@@ -153,6 +311,7 @@ st.title("🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento")
 if st.sidebar.button("Reiniciar Datos de la App (Desarrollo)"):
     st.session_state.clear()
     st.cache_data.clear()
+    st.cache_resource.clear() # Clear resource cache for models and DB
     
     # Also clear ChromaDB directory for a full reset
     if os.path.exists(CHROMA_DB_DIR):
@@ -173,7 +332,7 @@ pages = {
     "Catálogo de Vehículos": "🚗 Catálogo de Vehículos",
     "Comparador": "⚖️ Comparador de Vehículos",
     "Ingesta de Documentos (RAG)": "📂 Ingesta de Documentos para RAG", # NEW PAGE
-    "Asistente AI (RAG)": "🤖 Asistente AI", # Modified for RAG
+    "Asistente AI (RAG)": "🤖 Asistente AI (RAG)", # Modified for RAG
     "Valoración de Vehículos Usados (IA)": "📈 Valoración de Vehículos Usados (IA)",
     "Asesor de Mantenimiento (IA)": "🔧 Asesor de Mantenimiento (IA)",
     "Simulador de Escenarios Financieros (IA)": "🔮 Simulador de Escenarios Financieros (IA)",
@@ -296,13 +455,15 @@ elif selected_page == "Solicitud de Crédito":
                 st.warning("Por favor, completa todos los campos obligatorios.")
             else:
                 st.success(f"Solicitud recibida para {first_name} {last_name}. Un asesor se pondrá en contacto pronto.")
+                # Nota: st.session_debts no está definido, probablemente un typo.
+                # Lo he ajustado para usar st.session_state.existing_debts
                 st.json({
                     "nombre": first_name,
                     "apellido": last_name,
                     "email": email,
                     "telefono": phone,
                     "ingresos": st.session_state.income,
-                    "deudas_existentes": st.session_debts,
+                    "deudas_existentes": st.session_state.existing_debts, 
                     "precio_vehiculo_deseado": st.session_state.desired_vehicle_price,
                     "estabilidad_laboral": job_stability,
                     "tipo_vehiculo_interes": vehicle_type_interest
@@ -358,7 +519,7 @@ elif selected_page == "Análisis Preliminar":
                     Además, incluye un apartado de 'Detección de Fraude (IA)' con el siguiente resultado: "{fraud_detection_result}".
                     """
                     
-                    response = model.generate_content(prompt_for_gemini)
+                    response = general_llm_model.generate_content(prompt_for_gemini) # Usar general_llm_model
                     ai_analysis = response.text
                     st.session_state["ai_preliminary_analysis_output"] = ai_analysis # Store for gamification
 
@@ -391,7 +552,7 @@ elif selected_page == "Recomendador de Planes":
                 options=["Cuota mensual baja", "Pagar el préstamo rápidamente", "Flexibilidad en pagos/refinanciamiento", "Bajas tasas de interés"],
                 key="reco_priority"
             )
-            # Input para personalización de tasas
+            # Input para personalización de Tasas
             job_stability_reco = st.selectbox("Estabilidad Laboral (para personalización)", ["Empleado Fijo", "Contratista", "Independiente", "Desempleado"], key="reco_job_stability")
             vehicle_type_interest_reco = st.selectbox("Tipo de Vehículo de Interés (para personalización)", ["Sedan", "SUV", "Camioneta", "Deportivo", "Eléctrico"], key="reco_vehicle_type_interest")
 
@@ -581,7 +742,7 @@ elif selected_page == "Recomendador de Planes":
                     """
 
                     try:
-                        response = model.generate_content(ai_prompt)
+                        response = general_llm_model.generate_content(ai_prompt) # Usar general_llm_model
                         ai_recommendations_markdown = response.text
                         st.session_state["recommended_plans_output"] = ai_recommendations_markdown
                         
@@ -695,7 +856,7 @@ elif selected_page == "Comparador":
         else:
             st.warning("Por favor, selecciona dos vehículos para comparar.")
 
-# --- NEW RAG Pages ---
+# --- INGESTA DE DOCUMENTOS (RAG) ---
 elif selected_page == "Ingesta de Documentos (RAG)":
     st.info("Carga documentos para enriquecer el conocimiento del Asistente AI. Los documentos se procesarán y almacenarán en la base de datos vectorial.")
 
@@ -706,82 +867,49 @@ elif selected_page == "Ingesta de Documentos (RAG)":
         file_details = {"FileName": uploaded_file.name, "FileType": uploaded_file.type, "FileSize": uploaded_file.size}
         st.write(file_details)
 
-        document_content = ""
-        file_type = uploaded_file.type
-
-        if file_type == "application/pdf":
-            # Process PDF
-            try:
-                with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-                    for page in doc:
-                        document_content += page.get_text()
-                st.success("PDF leído exitosamente.")
-            except Exception as e:
-                st.error(f"Error al leer PDF: {e}")
-                document_content = None
-        elif file_type == "text/plain" or file_type == "text/markdown":
-            # Process TXT or MD
-            document_content = uploaded_file.read().decode("utf-8")
-            st.success("Archivo de texto leído exitosamente.")
-        else:
-            st.warning("Tipo de archivo no soportado para ingesta RAG. Por favor, sube PDF, TXT o MD.")
-            document_content = None
-
-        if document_content:
-            st.subheader("Procesar y Almacenar Documento")
-            chunk_size = st.slider("Tamaño de Chunks (caracteres)", 100, 2000, 1000, step=100)
-            chunk_overlap = st.slider("Solapamiento de Chunks (caracteres)", 0, 500, 200, step=50)
-
-            if st.button("Procesar y Guardar en DB Vectorial"):
-                with st.spinner("Procesando documento y generando embeddings..."):
-                    try:
-                        # Split text into chunks
-                        text_splitter = RecursiveCharacterTextSplitter(
-                            chunk_size=chunk_size,
-                            chunk_overlap=chunk_overlap,
-                            length_function=len,
-                            is_separator_regex=False,
-                        )
-                        chunks = text_splitter.split_text(document_content)
-                        st.write(f"Documento dividido en {len(chunks)} chunks.")
-
-                        # Add chunks to ChromaDB
-                        metadatas = [{"source": uploaded_file.name, "chunk_index": i} for i in range(len(chunks))]
-                        vector_store.add_texts(texts=chunks, metadatas=metadatas)
-                        vector_store.persist() # Save changes to disk
-                        st.success(f"¡Documento '{uploaded_file.name}' procesado y añadido a la base de datos vectorial!")
-                        st.info(f"Número total de documentos/chunks en la DB: {vector_store._collection.count()}")
-
-                    except Exception as e:
-                        st.error(f"Error al procesar o guardar el documento: {e}")
-                        st.info("Asegúrate de que el contenido del archivo sea válido y que el modelo de embeddings esté funcionando correctamente.")
+        if st.button("Procesar y Guardar en DB Vectorial"):
+            with st.spinner("Procesando documento y generando embeddings..."):
+                # Llamar a la función principal de procesamiento de documentos
+                success = process_and_save_document(uploaded_file, vector_store)
+                if success:
+                    # Limpiar la caché de recursos para asegurar que la base de datos se recargue
+                    # con los nuevos documentos la próxima vez que se acceda.
+                    st.cache_resource.clear()
+                    # Forzar la re-inicialización de la DB para que el conteo se actualice inmediatamente.
+                    # Pasamos de nuevo el modelo de embeddings
+                    vector_store = get_vector_store(embeddings_model) 
+                else:
+                    st.error("Fallo al guardar el documento. Revisa los logs para más detalles.")
             
-    st.subheader("Documentos Cargados (Simulado)")
-    # Note: ChromaDB doesn't easily expose all document contents directly without querying
-    # This just shows the count, not the list of documents
+    st.subheader("Documentos Cargados en la DB Vectorial")
     current_doc_count = vector_store._collection.count()
     if current_doc_count > 0:
-        st.write(f"Actualmente hay **{current_doc_count}** chunks de documentos en la base de datos vectorial.")
-        if st.button("Verificar documentos almacenados (debug)"):
-            try:
-                # This is a hacky way to see some content for debugging, not robust for large DBs
-                # It fetches some random document IDs and then tries to get their content.
-                # In a real app, you'd have a proper document management view.
-                all_ids = vector_store._collection.get(include=['metadatas'])['ids']
-                if all_ids:
-                    sample_ids = random.sample(all_ids, min(5, len(all_ids)))
-                    st.write("Muestra de IDs y metadatos:")
-                    st.json(vector_store._collection.get(ids=sample_ids, include=['metadatas']))
+        st.write(f"Actualmente hay **{current_doc_count}** fragmentos de documentos en la base de datos vectorial.")
+        
+        # Intenta obtener los nombres únicos de los documentos para mostrarlos
+        try:
+            # Obtener todos los IDs y metadatos (puede ser lento con muchos documentos)
+            all_data = vector_store._collection.get(include=['metadatas'])
+            if all_data and 'metadatas' in all_data:
+                unique_sources = set(m.get('source', 'Desconocido') for m in all_data['metadatas'] if m)
+                if unique_sources:
+                    st.markdown("**Archivos de origen cargados:**")
+                    for source in sorted(list(unique_sources)):
+                        st.write(f"- {source}")
                 else:
-                    st.info("No hay documentos en la base de datos para mostrar.")
-            except Exception as e:
-                st.error(f"Error al intentar obtener documentos para depuración: {e}")
+                    st.info("No se encontraron metadatos de 'source' para los documentos cargados.")
+            else:
+                st.info("No hay documentos en la base de datos o no se pudieron recuperar los metadatos.")
+        except Exception as e:
+            st.error(f"Error al intentar listar los documentos cargados: {e}")
+            st.info("Esto puede ocurrir si la DB es muy grande o hay un problema con los metadatos.")
     else:
         st.write("La base de datos vectorial está vacía. ¡Carga un documento para empezar!")
         
 
+# --- ASISTENTE AI (RAG) ---
 elif selected_page == "Asistente AI (RAG)":
-    st.info("¡Hola! Soy tu asistente de Finanzauto. Ahora puedo responder preguntas basándome en la información que has cargado en la sección 'Ingesta de Documentos (RAG)'.")
+    st.info("¡Hola! Soy tu asistente de Finanzauto. Hazme preguntas sobre nuestros servicios o los documentos que has cargado.")
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -797,50 +925,11 @@ elif selected_page == "Asistente AI (RAG)":
 
         with st.chat_message("assistant"):
             with st.spinner("Buscando en documentos y pensando..."):
-                try:
-                    # 1. Retrieval: Search for relevant documents in ChromaDB
-                    # You can adjust k (number of results) based on your needs
-                    retrieved_docs = vector_store.similarity_search(prompt, k=3) 
-                    
-                    context_for_llm = ""
-                    if retrieved_docs:
-                        st.info(f"🔎 Documentos relevantes encontrados: {[doc.metadata.get('source', 'Desconocido') for doc in retrieved_docs]}")
-                        context_for_llm = "\n\n".join([doc.page_content for doc in retrieved_docs])
-                        # Add some prompt engineering to instruct the LLM to use the context
-                        rag_prompt = f"""
-                        Eres un asistente útil de Finanzauto. Responde la pregunta del usuario basándote únicamente en el siguiente contexto, si el contexto es relevante. Si la información no está en el contexto, indica que no puedes responder con la información proporcionada.
+                # Llama a la función RAG, usando el LLM específico para RAG
+                ai_response = get_rag_response(prompt, vector_store, rag_llm_model)
+                st.markdown(ai_response)
+                st.session_state.chat_history.append(("assistant", ai_response))
 
-                        Contexto:
-                        {context_for_llm}
-
-                        Pregunta del usuario: {prompt}
-                        """
-                    else:
-                        st.warning("🤷‍♀️ No se encontraron documentos relevantes en la base de datos. Respondiendo solo con conocimiento general.")
-                        rag_prompt = prompt # Fallback to general knowledge if no docs found
-
-                    # 2. Generation: Send context and query to LLM
-                    gemini_messages = []
-                    # Include a brief history for conversation flow, but the main context comes from RAG
-                    for role, content in st.session_state.chat_history[-2:]: # Last 2 messages for slight conversational memory
-                        if role == "user":
-                            gemini_messages.append({"role": "user", "parts": [content]})
-                        elif role == "assistant":
-                            gemini_messages.append({"role": "model", "parts": [content]})
-                    
-                    # Ensure the current prompt is the last user message
-                    gemini_messages.append({"role": "user", "parts": [rag_prompt]})
-                    
-                    chat = model.start_chat(history=[]) # Start fresh chat, context is in the prompt
-                    response = chat.send_message(gemini_messages)
-
-                    ai_response = response.text
-                    st.markdown(ai_response)
-                    st.session_state.chat_history.append(("assistant", ai_response))
-
-                except Exception as e:
-                    st.error(f"Lo siento, hubo un error al procesar tu solicitud con RAG. Por favor, asegúrate de que haya documentos en la DB y que el modelo de embeddings funcione. Error: {e}")
-                    st.session_state.chat_history.append(("assistant", "Lo siento, hubo un error al procesar tu solicitud."))
 
 elif selected_page == "Valoración de Vehículos Usados (IA)":
     st.info("Obtén una estimación del precio de mercado de tu vehículo usado con la ayuda de nuestra IA.")
@@ -860,8 +949,9 @@ elif selected_page == "Valoración de Vehículos Usados (IA)":
 
         if submitted_val:
             with st.spinner("Analizando el mercado para tu vehículo..."):
+                # Usar el modelo general para la valoración
                 prompt_valuation = f"""
-                Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que la fecha actual es 13 de julio de 2025 y que el mercado es Colombia.
+                Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que la fecha actual es {datetime.now().strftime('%d de %B de %Y')} y que el mercado es Colombia.
 
                 Información del Vehículo:
                 - Marca: {val_make}
@@ -874,7 +964,7 @@ elif selected_page == "Valoración de Vehículos Usados (IA)":
                 Ofrece una valoración estimada como un rango de precios (ej. $X.XXX.XXX - $Y.YYY.YYY COP) y justifica tu estimación basándote en los factores proporcionados. También, menciona brevemente cualquier factor adicional que podría influir en el precio (ej. historial de accidentes, demanda del modelo). Utiliza valores realistas para el mercado colombiano.
                 """
                 try:
-                    response = model.generate_content(prompt_valuation)
+                    response = general_llm_model.generate_content(prompt_valuation)
                     valuation_result = response.text
                     st.subheader("Valoración Estimada por IA:")
                     st.markdown(valuation_result)
@@ -896,6 +986,7 @@ elif selected_page == "Asesor de Mantenimiento (IA)":
                 st.warning("Por favor, ingresa el modelo de tu vehículo y describe tu pregunta.")
             else:
                 with st.spinner("Buscando la mejor asesoría para ti..."):
+                    # Usar el modelo general para la asesoría
                     prompt_maintenance = f"""
                     Eres un asesor experto en mantenimiento automotriz de Finanzauto. El cliente tiene un **{vehicle_make_model}** y su pregunta/problema es: "{problem_description}".
 
@@ -907,7 +998,7 @@ elif selected_page == "Asesor de Mantenimiento (IA)":
                     5.  Una advertencia para buscar un profesional si el problema es serio.
                     """
                     try:
-                        response = model.generate_content(prompt_maintenance)
+                        response = general_llm_model.generate_content(prompt_maintenance)
                         maintenance_advice = response.text
                         st.subheader("Asesoría de Mantenimiento de IA:")
                         st.markdown(maintenance_advice)
@@ -941,6 +1032,7 @@ elif selected_page == "Simulador de Escenarios Financieros (IA)":
 
     if simulate_button:
         with st.spinner("Analizando tu escenario financiero..."):
+            # Usar el modelo general para la simulación
             prompt_scenario = f"""
             Eres un experto en finanzas personales de Finanzauto. Necesito que simules el impacto de un escenario financiero en un préstamo automotriz existente.
 
@@ -957,7 +1049,7 @@ elif selected_page == "Simulador de Escenarios Financieros (IA)":
             Por favor, explica claramente el impacto esperado en la cuota mensual, el plazo restante, y el interés total pagado, si aplica. Ofrece consejos prácticos sobre cómo manejar este escenario o aprovecharlo. Utiliza formato de moneda de Colombia ($ pesos con puntos para miles y comas para decimales, ej. $1.000.000,00).
             """
             try:
-                response = model.generate_content(prompt_scenario)
+                response = general_llm_model.generate_content(prompt_scenario)
                 scenario_analysis = response.text
                 st.subheader("Análisis de Escenario por IA:")
                 st.markdown(scenario_analysis)
@@ -1048,160 +1140,4 @@ elif selected_page == "Gamificación de Crédito":
     milestones = [
         {"name": "Perfil Completo", "desc": "Completa toda tu información en la 'Solicitud de Crédito'.", "points": 50, "condition_key": "app_first_name", "badge": "🌟 Perfil Pro"},
         {"name": "Análisis Preliminar Realizado", "desc": "Utiliza la herramienta de 'Análisis Preliminar'.", "points": 75, "condition_key": "ai_preliminary_analysis_output", "badge": "🧠 Analista Novato"},
-        {"name": "Plan Recomendado", "desc": "Obtén una recomendación de plan en 'Recomendador de Planes'.", "points": 100, "condition_key": "recommended_plans_output", "badge": "💡 Planificador Experto"},
-        {"name": "Solicitud Aprobada (Demo)", "desc": "Tu solicitud de crédito ha sido aprobada (simulado).", "points": 200, "condition_key": "dummy_loan_approved", "badge": "✅ Crédito Aprobado"},
-    ]
-
-    # Process milestones to update points and badges
-    for milestone in milestones:
-        is_completed = False
-        if milestone["condition_key"] == "app_first_name":
-            if st.session_state.get("app_first_name") and st.session_state.get("app_last_name"):
-                is_completed = True
-        elif milestone["condition_key"] == "ai_preliminary_analysis_output":
-            if st.session_state.get("ai_preliminary_analysis_output"):
-                is_completed = True
-        elif milestone["condition_key"] == "recommended_plans_output":
-            if st.session_state.get("recommended_plans_output"):
-                is_completed = True
-        elif milestone["condition_key"] == "dummy_loan_approved":
-            # Check if any loan in the dummy data is approved
-            if any(app['status'] == "Aprobada" for app in st.session_state.dummy_user_data['loan_applications']):
-                is_completed = True
-        
-        # Only add points and badge if not already completed
-        if is_completed and milestone["badge"] not in st.session_state.gamification_badges:
-            st.session_state.gamification_points += milestone["points"]
-            st.session_state.gamification_badges.append(milestone["badge"])
-            # Rerun to update the displayed points/badges immediately after earning
-            st.toast(f"¡Ganaste {milestone['points']} puntos por '{milestone['name']}' y la insignia '{milestone['badge']}'!", icon="🎉")
-            st.rerun() 
-
-    # Display milestones
-    for milestone in milestones:
-        is_current_completed = False
-        if milestone["condition_key"] == "app_first_name":
-            if st.session_state.get("app_first_name") and st.session_state.get("app_last_name"):
-                is_current_completed = True
-        elif milestone["condition_key"] == "ai_preliminary_analysis_output":
-            if st.session_state.get("ai_preliminary_analysis_output"):
-                is_current_completed = True
-        elif milestone["condition_key"] == "recommended_plans_output":
-            if st.session_state.get("recommended_plans_output"):
-                is_current_completed = True
-        elif milestone["condition_key"] == "dummy_loan_approved":
-            if any(app['status'] == "Aprobada" for app in st.session_state.dummy_user_data['loan_applications']):
-                is_current_completed = True
-
-        status_emoji = "✅ Completado" if is_current_completed else "⏳ Pendiente"
-        
-        with col_game1:
-            st.markdown(f"**{milestone['name']}**")
-            st.write(f"- {milestone['desc']}")
-        with col_game2:
-            st.write(f"Puntos: {milestone['points']} | Estado: {status_emoji}")
-
-    st.subheader("Tus Insignias:")
-    if st.session_state.gamification_badges:
-        st.write(", ".join(st.session_state.gamification_badges))
-    else:
-        st.write("Aún no tienes insignias. ¡Empieza a completar hitos!")
-
-    st.markdown("---")
-    st.info("Puntos y insignias son solo una simulación para demostrar la funcionalidad. Los beneficios reales se comunicarían oportunamente.")
-
-elif selected_page == "Alertas de Vehículos":
-    st.info("Configura alertas personalizadas y te notificaremos cuando vehículos que coincidan con tus criterios estén disponibles.")
-
-    st.subheader("Configurar Nueva Alerta")
-    with st.form("vehicle_alert_form"):
-        alert_make = st.selectbox("Marca Preferida", options=["Cualquiera"] + sorted(list(set([v['make'] for v in DUMMY_VEHICLES]))), key="alert_make")
-        alert_model = st.text_input("Modelo Específico (opcional)", key="alert_model")
-        alert_max_price = st.number_input("Precio Máximo ($)", min_value=0, value=50000, step=1000, key="alert_max_price")
-        alert_type = st.multiselect("Tipos de Vehículo", options=sorted(list(set([v['type'] for v in DUMMY_VEHICLES]))), key="alert_type")
-        alert_email = st.text_input("Correo Electrónico para notificaciones", value=st.session_state.dummy_user_data["email"], key="alert_email")
-
-        submitted_alert = st.form_submit_button("Crear Alerta")
-
-        if submitted_alert:
-            if not alert_email:
-                st.warning("Por favor, ingresa un correo electrónico para las notificaciones.")
-            else:
-                new_alert = {
-                    "make": alert_make,
-                    "model": alert_model if alert_model else "Cualquiera",
-                    "max_price": alert_max_price,
-                    "type": alert_type if alert_type else "Cualquiera",
-                    "email": alert_email,
-                    "status": "Activa",
-                    "created_date": datetime.now().strftime("%Y-%m-%d")
-                }
-                if 'user_alerts' not in st.session_state:
-                    st.session_state.user_alerts = []
-                st.session_state.user_alerts.append(new_alert)
-                st.success("¡Alerta creada con éxito! Te notificaremos si encontramos vehículos que coincidan.")
-                
-    st.subheader("Tus Alertas Activas")
-    if 'user_alerts' in st.session_state and st.session_state.user_alerts:
-        for i, alert in enumerate(st.session_state.user_alerts):
-            st.markdown(f"**Alerta #{i+1}**")
-            st.write(f"- Marca: {alert['make']} | Modelo: {alert['model']}")
-            st.write(f"- Precio Máximo: ${alert['max_price']:,.2f} | Tipo(s): {', '.join(alert['type']) if isinstance(alert['type'], list) else alert['type']}")
-            st.write(f"- Estado: {alert['status']} | Creada: {alert['created_date']}")
-            if alert['status'] == "Activa":
-                if st.button(f"Desactivar Alerta {i+1}", key=f"deactivate_alert_{i}"):
-                    st.session_state.user_alerts[i]["status"] = "Inactiva"
-                    st.warning(f"Alerta #{i+1} desactivada.")
-                    st.rerun()
-            else:
-                st.info("Esta alerta está inactiva.")
-            st.markdown("---")
-    else:
-        st.write("Aún no tienes alertas configuradas. ¡Crea una para no perderte tu vehículo ideal!")
-
-elif selected_page == "Portal de Clientes":
-    st.info("Un espacio personalizado para que los clientes gestionen sus créditos y vehículos.")
-    st.write("Aquí los clientes podrían:")
-    st.markdown("- Ver el estado de sus solicitudes de crédito.")
-    st.markdown("- Acceder a documentos de sus préstamos.")
-    st.markdown("- Ver el historial de pagos y próximos vencimientos.")
-    st.markdown("- Actualizar su información de contacto.")
-    st.markdown("- Recibir ofertas personalizadas de vehículos o refinanciamientos.")
-
-elif selected_page == "Portal de Asesores":
-    st.info("Herramientas para que los asesores gestionen y den seguimiento a las solicitudes de los clientes.")
-    st.write("Aquí los asesores podrían:")
-    st.markdown("- Ver un listado de todas las solicitudes de crédito (nuevas, en revisión, aprobadas).")
-    st.markdown("- Acceder a los detalles de cada solicitud, incluyendo el análisis preliminar de IA.")
-    st.markdown("- Cargar documentos adicionales solicitados a los clientes.")
-    st.markdown("- Aprobar o rechazar solicitudes, con opciones para justificar la decisión.")
-    st.markdown("- Enviar comunicaciones personalizadas a los clientes.")
-    st.markdown("- Acceder a métricas de rendimiento y productividad.")
-
-elif selected_page == "Blog":
-    st.info("Artículos y noticias sobre el mundo automotriz, consejos financieros y novedades de Finanzauto.")
-    st.write("Explora nuestros últimos posts:")
-    st.markdown("---")
-    st.markdown("#### **Guía Completa para Comprar tu Primer Auto Usado**")
-    st.write("Aprende todo lo que necesitas saber para hacer una compra inteligente.")
-    st.write("_Publicado el: 10 de Julio, 2025_")
-    st.button("Leer Más", key="blog1")
-    st.markdown("---")
-    st.markdown("#### **5 Razones por las que un Vehículo Eléctrico Podría Ser tu Mejor Inversión**")
-    st.write("Descubre los beneficios ambientales y económicos de la movilidad eléctrica.")
-    st.write("_Publicado el: 1 de Julio, 2025_")
-    st.button("Leer Más", key="blog2")
-    st.markdown("---")
-    st.markdown("#### **Cómo Mejorar tu Historial Crediticio para Obtener Mejores Tasas**")
-    st.write("Consejos prácticos para fortalecer tu perfil financiero.")
-    st.write("_Publicado el: 20 de Junio, 2025_")
-    st.button("Leer Más", key="blog3")
-    st.markdown("---")
-
-elif selected_page == "Soporte Multi-idioma":
-    st.info("Selecciona el idioma de tu preferencia para la interfaz y el Asistente AI.")
-
-    selected_language = st.selectbox("Idioma de la Interfaz", options=["Español", "English", "Português"], key="app_language")
-
-    st.success(f"Idioma de la interfaz establecido a: **{selected_language}**.")
-    st.write("Nota: La implementación completa del multi-idioma (traducción de todos los textos y respuestas de la IA) es una funcionalidad compleja que requiere integración profunda y servicios de traducción para el modelo de IA. Esta es una demostración conceptual.")
+        {"name": "Plan Recomendado", "desc": "Obtén una recomendación de plan en 'Recomendador de Planes'.", "points": 100, "condition_key": "recommended_plans_output", "badge": "💡 Planificador Experto
