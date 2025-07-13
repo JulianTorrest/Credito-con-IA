@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 # EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
 GEMINI_API_KEY = "AIzaSyB4F2fQErtanjQvbWgm4CmD4xxpuSJYX4A" # ¡IMPORTANTE! Reemplaza esto con tu clave API real
 
-genai.configure(api_api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY) # Cambiado de api_api_key a api_key
 
 # Initialize the generative model with Gemini 1.5 Flash
 try:
