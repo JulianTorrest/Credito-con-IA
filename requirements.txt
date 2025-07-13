@@ -1,10 +1,10 @@
 streamlit
 google-generativeai
 PyMuPDF
-chromadb 
-langchain 
-langchain_community 
+langchain
+langchain_community
+chromadb
 langchain-chroma
 langchain-google-genai
-langchain-text-splitters # ¡ESTA ES LA CRÍTICA!
+langchain-text-splitters
 python-dotenv
