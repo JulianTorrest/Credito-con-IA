@@ -1,6 +1,7 @@
 streamlit
 google-generativeai
 PyMuPDF
+chromadb 
 langchain 
 langchain_community 
 langchain-chroma
