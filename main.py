@@ -3,13 +3,14 @@ import google.generativeai as genai
 import random
 import os
 import math # Importamos math para cálculos financieros
+from datetime import datetime, timedelta
 
 # --- Configuration ---
 # ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
 # EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
 GEMINI_API_KEY = "AIzaSyB4F2fQErtanjQvbWgm4CmD4xxpuSJYX4A" # Tu clave API proporcionada
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_api_key=GEMINI_API_KEY)
 
 # Initialize the generative model with Gemini 1.5 Flash
 try:
@@ -102,6 +103,38 @@ if 'dummy_user_data' not in st.session_state or 'loan_applications' not in st.se
         "favorite_vehicles": random.sample(DUMMY_VEHICLES, k=3),
         "recommended_vehicles": random.sample(DUMMY_VEHICLES, k=2)
     }
+
+# --- Dummy Auction Data (Simulated for functionality) ---
+if 'auctions' not in st.session_state:
+    st.session_state.auctions = [
+        {
+            "id": "AUCT001",
+            "vehicle": "Mercedes-Benz GLC 2022",
+            "initial_bid": 38000,
+            "current_bid": 40500,
+            "end_time": datetime.now() + timedelta(hours=random.randint(1, 48), minutes=random.randint(0, 59)),
+            "last_bidder": "Juan P.",
+            "image_url": "https://images.unsplash.com/photo-1549399518-e3cf14a1a6b0?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+        },
+        {
+            "id": "AUCT002",
+            "vehicle": "Tesla Model Y 2023",
+            "initial_bid": 45000,
+            "current_bid": 47200,
+            "end_time": datetime.now() + timedelta(hours=random.randint(1, 48), minutes=random.randint(0, 59)),
+            "last_bidder": "Ana M.",
+            "image_url": "https://images.unsplash.com/photo-1621644053676-e1f9a2b5e2d6?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+        },
+        {
+            "id": "AUCT003",
+            "vehicle": "Ford Mustang 2020",
+            "initial_bid": 25000,
+            "current_bid": 28100,
+            "end_time": datetime.now() + timedelta(hours=random.randint(1, 48), minutes=random.randint(0, 59)),
+            "last_bidder": "Carlos R.",
+            "image_url": "https://images.unsplash.com/photo-1621535787948-438994382583?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+        }
+    ]
 
 # --- Streamlit App Structure ---
 st.set_page_config(layout="wide", page_title="Finanzauto", initial_sidebar_state="expanded")
@@ -581,22 +614,27 @@ elif page == "Catálogo de Vehículos":
     col_filter1, col_filter2, col_filter3 = st.columns(3)
 
     with col_filter1:
-        search_query = st.text_input("Buscar por Marca o Modelo", "", key="catalog_search_query")
+        search_query = st.text_input("Buscar por Marca o Modelo", "", key="catalog_search_query").lower()
         min_price = st.number_input("Precio Mínimo ($)", min_value=0, value=0, step=1000, key="catalog_min_price")
     with col_filter2:
         max_price = st.number_input("Precio Máximo ($)", min_value=0, value=150000, step=1000, key="catalog_max_price")
+        # Use a default empty list for multiselect if nothing is selected
         selected_types = st.multiselect("Tipo de Vehículo", options=sorted(list(set([v['type'] for v in DUMMY_VEHICLES]))), key="catalog_types")
     with col_filter3:
+        # Use a default empty list for multiselect if nothing is selected
         selected_fuels = st.multiselect("Tipo de Combustible", options=sorted(list(set([v['fuel'] for v in DUMMY_VEHICLES]))), key="catalog_fuels")
         selected_year = st.slider("Año Mínimo", min_value=2018, max_value=2025, value=2018, key="catalog_year")
+
+    st.markdown("---") # Visual separator for filters and results
 
     filtered_vehicles = []
     for vehicle in DUMMY_VEHICLES:
         match = True
         if search_query:
-            if search_query.lower() not in vehicle['make'].lower() and \
-               search_query.lower() not in vehicle['model'].lower():
+            if search_query not in vehicle['make'].lower() and \
+               search_query not in vehicle['model'].lower():
                 match = False
+        # Ensure price range is handled correctly
         if not (min_price <= vehicle['price'] <= max_price):
             match = False
         if selected_types and vehicle['type'] not in selected_types:
@@ -609,18 +647,23 @@ elif page == "Catálogo de Vehículos":
         if match:
             filtered_vehicles.append(vehicle)
     
-    st.write(f"Mostrando {len(filtered_vehicles):,} de {len(DUMMY_VEHICLES):,} vehículos.")
+    st.write(f"Mostrando **{len(filtered_vehicles):,}** de **{len(DUMMY_VEHICLES):,}** vehículos que cumplen los criterios.")
 
-    display_limit = 200
-    for vehicle in filtered_vehicles[:display_limit]:
-        st.subheader(f"{vehicle['year']} {vehicle['make']} {vehicle['model']}")
-        st.write(f"**Tipo:** {vehicle['type']} | **Combustible:** {vehicle['fuel']} | **Kilometraje:** {vehicle['mileage']:,} km")
-        st.write(f"**Color:** {vehicle['color']} | **Características:** {', '.join(vehicle['features'])}")
-        st.write(f"**Precio:** ${vehicle['price']:,.2f}")
-        st.markdown("---")
-    
-    if len(filtered_vehicles) > display_limit:
-        st.info(f"Mostrando los primeros {display_limit} vehículos. Usa los filtros para refinar tu búsqueda.")
+    display_limit = 200 # Limit the number of vehicles displayed to avoid excessive rendering
+    if filtered_vehicles:
+        for vehicle in filtered_vehicles[:display_limit]:
+            st.subheader(f"{vehicle['year']} {vehicle['make']} {vehicle['model']}")
+            st.write(f"**Tipo:** {vehicle['type']} | **Combustible:** {vehicle['fuel']} | **Kilometraje:** {vehicle['mileage']:,} km")
+            st.write(f"**Color:** {vehicle['color']} | **Características:** {', '.join(vehicle['features'])}")
+            st.markdown(f"### Precio: <span style='color:green; font-weight:bold;'>${vehicle['price']:,.2f}</span>", unsafe_allow_html=True)
+            st.button(f"Ver Detalles / Financiar {vehicle['id']}", key=f"details_{vehicle['id']}")
+            st.markdown("---")
+        
+        if len(filtered_vehicles) > display_limit:
+            st.info(f"Mostrando los primeros {display_limit} vehículos. Usa los filtros para refinar tu búsqueda o desplázate para ver más.")
+    else:
+        st.warning("No se encontraron vehículos que coincidan con tus criterios de búsqueda. Intenta ajustar los filtros.")
+
 
 elif page == "Comparador":
     st.header("⚖️ Comparador de Vehículos")
@@ -662,8 +705,80 @@ elif page == "Comparador":
 
 elif page == "Subastas":
     st.header("🔨 Subastas de Vehículos")
-    st.info("Participa en nuestras subastas de vehículos exclusivos.")
-    st.write("No hay subastas activas en este momento (dummy).")
+    st.info("¡Participa en nuestras subastas de vehículos exclusivos y consigue grandes ofertas!")
+
+    if not st.session_state.auctions:
+        st.write("No hay subastas activas en este momento. ¡Vuelve pronto!")
+    else:
+        # Sort auctions by remaining time (closest first)
+        active_auctions = sorted([a for a in st.session_state.auctions if a["end_time"] > datetime.now()], key=lambda x: x["end_time"])
+        finished_auctions = sorted([a for a in st.session_state.auctions if a["end_time"] <= datetime.now()], key=lambda x: x["end_time"], reverse=True)
+
+        if active_auctions:
+            st.subheader("Subastas Activas")
+            for auction in active_auctions:
+                time_remaining = auction["end_time"] - datetime.now()
+                total_seconds = int(time_remaining.total_seconds())
+
+                if total_seconds > 0:
+                    hours, remainder = divmod(total_seconds, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    time_str = f"{hours:02}h {minutes:02}m {seconds:02}s"
+
+                    st.markdown(f"### **{auction['vehicle']}** (ID: {auction['id']})")
+                    if auction["image_url"]:
+                        st.image(auction["image_url"], caption=auction["vehicle"], width=400)
+                    
+                    st.metric(label="Oferta Actual", value=f"${auction['current_bid']:,.2f}")
+                    st.write(f"Última oferta de: **{auction['last_bidder']}**")
+                    st.write(f"Tiempo restante: **{time_str}**")
+
+                    # Bid input and button
+                    col_bid_input, col_bid_button = st.columns([0.7, 0.3])
+                    with col_bid_input:
+                        new_bid = st.number_input(
+                            f"Tu oferta para {auction['vehicle']} (Min: ${auction['current_bid'] + 100:,.2f})",
+                            min_value=auction['current_bid'] + 100,
+                            value=auction['current_bid'] + 100,
+                            step=100,
+                            key=f"bid_{auction['id']}"
+                        )
+                    with col_bid_button:
+                        st.markdown("<br>", unsafe_allow_html=True) # Add some space to align button
+                        if st.button(f"Hacer Oferta por ${new_bid:,.2f}", key=f"submit_bid_{auction['id']}"):
+                            if new_bid > auction['current_bid']:
+                                auction['current_bid'] = new_bid
+                                auction['last_bidder'] = "Tu (Dummy)" # Simulate current user
+                                st.success(f"¡Oferta de ${new_bid:,.2f} realizada para {auction['vehicle']}!")
+                                # Rerun to update timer and bid
+                                st.rerun() 
+                            else:
+                                st.error("Tu oferta debe ser mayor que la oferta actual.")
+                    st.markdown("---")
+                else:
+                    # Mark auction as finished if time runs out on a rerun
+                    st.session_state.auctions = [a for a in st.session_state.auctions if a["id"] != auction["id"]]
+                    finished_auctions.append(auction) # Move to finished list
+                    st.warning(f"La subasta por el **{auction['vehicle']}** ha terminado. ¡Estate atento a nuevas subastas!")
+                    st.rerun() # Rerun to remove it from active and show in finished
+
+        else:
+            st.write("No hay subastas activas en este momento. ¡Vuelve pronto!")
+
+        if finished_auctions:
+            st.subheader("Subastas Finalizadas")
+            for auction in finished_auctions:
+                st.markdown(f"**{auction['vehicle']}** (ID: {auction['id']})")
+                st.write(f"Precio Final: **${auction['current_bid']:,.2f}**")
+                st.write(f"Ganador (Dummy): **{auction['last_bidder']}**")
+                st.write(f"Terminó el: {auction['end_time'].strftime('%Y-%m-%d %H:%M:%S')}")
+                st.markdown("---")
+
+        # Trick to auto-refresh every few seconds for auction timers
+        # This is a simple trick, for real-time you'd need websockets/backend
+        import time
+        time.sleep(1) # Refresh every second
+        st.rerun() # Rerun the app to update timers
 
 elif page == "Portal de Clientes":
     st.header("👤 Portal de Clientes")
