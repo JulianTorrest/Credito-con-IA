@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 # --- Configuration ---
 # ATENCIÓN: TU CLAVE API ESTÁ AQUÍ DIRECTAMENTE PARA FACILITAR EL DESARROLLO.
 # EN PRODUCCIÓN, SIEMPRE USA st.secrets O VARIABLES DE ENTORNO.
-GEMINI_API_KEY = "AIzaSyB4F2fQErtanjQvbWgm4CmD4xxpuSJYX4A" # ¡IMPORTANTE! Reemplaza esto con tu clave API real
+GEMINI_API_KEY = "TU_CLAVE_API_AQUI" # ¡IMPORTANTE! Reemplaza esto con tu clave API real
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_api_key=GEMINI_API_KEY)
 
 # Initialize the generative model with Gemini 1.5 Flash
 try:
@@ -47,7 +47,7 @@ def generate_random_vehicles(num_vehicles=5000):
         "Bluetooth", "Backup Camera", "Sunroof", "Leather Seats", "Navigation System",
         "Heated Seats", "Lane Assist", "Adaptive Cruise Control", "AWD", "Keyless Entry",
         "Apple CarPlay", "Android Auto", "Blind Spot Monitoring", "Towing Package",
-        "Premium Sound System", "Panoramic Roof", "Automatic Emergency BrakING"
+        "Premium Sound System", "Panoramic Roof", "Automatic Emergency Braking"
     ]
 
     vehicles = []
@@ -115,78 +115,66 @@ if st.sidebar.button("Reiniciar Datos de la App (Desarrollo)"):
     st.cache_data.clear()
     st.rerun()
 
-# --- Sidebar Navigation ---
-st.sidebar.title("Menú Principal")
-page = st.sidebar.radio("Navegación", [
-    "Asistente AI",
-    "Dashboard",
-    "Simulador de Crédito",
-    "Solicitud de Crédito",
-    "Análisis Preliminar",
-    "Recomendador de Planes",
-    "Catálogo de Vehículos",
-    "Comparador",
-    "Valoración de Vehículos Usados (IA)", # NEW
-    "Asesor de Mantenimiento (IA)", # NEW
-    "Simulador de Escenarios Financieros (IA)", # NEW
-    "Calculadora de Impacto Ambiental", # NEW
-    "Gamificación de Crédito", # NEW
-    "Alertas de Vehículos", # NEW
-    "Portal de Clientes",
-    "Portal de Asesores",
-    "Blog",
-    "Soporte Multi-idioma" # Moved for logical grouping in the menu
-])
+# --- Tabbed Navigation ---
+# Define the tabs
+tabs_list = [
+    "Inicio", # For a general welcome or dashboard view
+    "Créditos",
+    "Vehículos",
+    "Herramientas IA",
+    "Soporte y Más"
+]
 
-# --- Page Content Based on Selection ---
+# Create the tabs
+selected_tab = st.tabs(tabs_list)
 
-if page == "Asistente AI":
-    st.header("🤖 Asistente AI")
-    st.write("¡Hola! Soy tu asistente de Finanzauto. ¿En qué puedo ayudarte hoy?")
+# Map pages to tabs for better organization
+# You might need to adjust the exact pages that go into each tab
+pages_by_tab = {
+    "Inicio": ["Dashboard"],
+    "Créditos": ["Simulador de Crédito", "Solicitud de Crédito", "Análisis Preliminar", "Recomendador de Planes"],
+    "Vehículos": ["Catálogo de Vehículos", "Comparador", "Alertas de Vehículos"],
+    "Herramientas IA": ["Asistente AI", "Valoración de Vehículos Usados (IA)", "Asesor de Mantenimiento (IA)", "Simulador de Escenarios Financieros (IA)", "Calculadora de Impacto Ambiental", "Gamificación de Crédito"],
+    "Soporte y Más": ["Portal de Clientes", "Portal de Asesores", "Blog", "Soporte Multi-idioma"]
+}
 
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+# --- Page Content Based on Selected Tab and then sub-selection ---
+# We'll use a session state to keep track of the current sub-page
+if 'current_sub_page' not in st.session_state:
+    st.session_state.current_sub_page = "Dashboard" # Default starting page
 
-    for role, content in st.session_state.chat_history:
-        with st.chat_message(role):
-            st.markdown(content)
+# Handle selection within tabs
+# This will be in the content area of the main page, not the sidebar
+with selected_tab[0]: # "Inicio" tab
+    st.subheader("Bienvenido a Finanzauto")
+    st.write("Explora las secciones para encontrar tu vehículo ideal o gestionar tu crédito.")
+    # Direct link to Dashboard from here
+    if st.button("Ir al Dashboard", key="go_to_dashboard_from_home"):
+        st.session_state.current_sub_page = "Dashboard"
 
-    if prompt := st.chat_input("Escribe tu pregunta aquí..."):
-        st.session_state.chat_history.append(("user", prompt))
-        with st.chat_message("user"):
-            st.markdown(prompt)
+with selected_tab[1]: # "Créditos" tab
+    st.subheader("Gestiona tus Créditos")
+    loan_page = st.radio("Secciones de Crédito", pages_by_tab["Créditos"], key="loan_sections")
+    st.session_state.current_sub_page = loan_page
 
-        with st.chat_message("assistant"):
-            with st.spinner("Pensando..."):
-                try:
-                    gemini_messages = []
-                    for role, content in st.session_state.chat_history:
-                        if role == "user" and content == prompt:
-                            gemini_messages.append({"role": "user", "parts": [content]})
-                        elif role == "user":
-                            gemini_messages.append({"role": "user", "parts": [content]})
-                        elif role == "assistant":
-                            gemini_messages.append({"role": "model", "parts": [content]})
-                    
-                    if not gemini_messages:
-                         response = model.generate_content(prompt)
-                    else:
-                        if gemini_messages[-1]["role"] == "user" and gemini_messages[-1]["parts"][0] == prompt:
-                             chat_history_for_gemini = gemini_messages[:-1]
-                        else:
-                             chat_history_for_gemini = gemini_messages
+with selected_tab[2]: # "Vehículos" tab
+    st.subheader("Encuentra tu Vehículo")
+    vehicle_page = st.radio("Secciones de Vehículos", pages_by_tab["Vehículos"], key="vehicle_sections")
+    st.session_state.current_sub_page = vehicle_page
 
-                        chat = model.start_chat(history=chat_history_for_gemini)
-                        response = chat.send_message(prompt)
+with selected_tab[3]: # "Herramientas IA" tab
+    st.subheader("Herramientas Inteligentes")
+    ai_page = st.radio("Secciones de IA", pages_by_tab["Herramientas IA"], key="ai_sections")
+    st.session_state.current_sub_page = ai_page
 
-                    ai_response = response.text
-                    st.markdown(ai_response)
-                    st.session_state.chat_history.append(("assistant", ai_response))
-                except Exception as e:
-                    st.error(f"Lo siento, hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo. Error: {e}")
-                    st.session_state.chat_history.append(("assistant", "Lo siento, hubo un error al procesar tu solicitud."))
+with selected_tab[4]: # "Soporte y Más" tab
+    st.subheader("Soporte y Recursos")
+    support_page = st.radio("Otras Secciones", pages_by_tab["Soporte y Más"], key="support_sections")
+    st.session_state.current_sub_page = support_page
 
-elif page == "Dashboard":
+# --- Display content based on st.session_state.current_sub_page ---
+
+if st.session_state.current_sub_page == "Dashboard":
     st.header("📊 Dashboard del Usuario")
     st.info("¡Bienvenido, Juan Pérez! Aquí tienes un resumen de tu actividad en Finanzauto.")
 
@@ -237,7 +225,7 @@ elif page == "Dashboard":
     else:
         st.write("No hay recomendaciones personalizadas en este momento. Explora el catálogo o usa el recomendador.")
 
-elif page == "Simulador de Crédito":
+elif st.session_state.current_sub_page == "Simulador de Crédito":
     st.header("💰 Simulador de Crédito")
     st.write("Calcula tus pagos estimados.")
     
@@ -265,7 +253,7 @@ elif page == "Simulador de Crédito":
         st.info(f"**Pago Total Estimado:** ${total_payment:,.2f}")
         st.info(f"**Intereses Totales Estimados:** ${total_interest:,.2f}")
 
-elif page == "Solicitud de Crédito":
+elif st.session_state.current_sub_page == "Solicitud de Crédito":
     st.header("📝 Solicitud de Crédito")
     st.info("Por favor, rellena tus datos para solicitar un crédito automotriz.")
     with st.form("credit_application_form"):
@@ -306,7 +294,7 @@ elif page == "Solicitud de Crédito":
                     "tipo_vehiculo_interes": vehicle_type_interest
                 })
 
-elif page == "Análisis Preliminar":
+elif st.session_state.current_sub_page == "Análisis Preliminar":
     st.header("🔎 Análisis Preliminar de Crédito")
     st.info("Aquí se mostrará un análisis automatizado inicial de tu elegibilidad, basado en la información que proporciones en la sección de 'Solicitud de Crédito'.")
 
@@ -367,7 +355,7 @@ elif page == "Análisis Preliminar":
                 except Exception as e:
                     st.error(f"Lo siento, hubo un error al realizar el análisis. Por favor, inténtalo de nuevo. Error: {e}")
 
-elif page == "Recomendador de Planes":
+elif st.session_state.current_sub_page == "Recomendador de Planes":
     st.header("💡 Recomendador de Planes Financieros")
     st.info("Cuéntanos sobre tus necesidades y te ayudaremos a encontrar el plan de financiamiento ideal.")
 
@@ -604,7 +592,7 @@ elif page == "Recomendador de Planes":
         else:
             st.warning("No se pudieron generar recomendaciones de planes. Por favor, ajusta tus datos.")
 
-elif page == "Catálogo de Vehículos":
+elif st.session_state.current_sub_page == "Catálogo de Vehículos":
     st.header("🚗 Catálogo de Vehículos")
     st.info(f"Explora nuestra selección de {len(DUMMY_VEHICLES):,} vehículos disponibles.")
 
@@ -660,7 +648,7 @@ elif page == "Catálogo de Vehículos":
         st.warning("No se encontraron vehículos que coincidan con tus criterios de búsqueda. Intenta ajustar los filtros.")
 
 
-elif page == "Comparador":
+elif st.session_state.current_sub_page == "Comparador":
     st.header("⚖️ Comparador de Vehículos")
     st.info("Selecciona dos vehículos para comparar sus características lado a lado.")
     
@@ -698,9 +686,7 @@ elif page == "Comparador":
         else:
             st.warning("Por favor, selecciona dos vehículos para comparar.")
 
-# --- Nuevas Funcionalidades ---
-
-elif page == "Valoración de Vehículos Usados (IA)":
+elif st.session_state.current_sub_page == "Valoración de Vehículos Usados (IA)":
     st.header("📈 Valoración de Vehículos Usados (IA)")
     st.info("Obtén una estimación del precio de mercado de tu vehículo usado con la ayuda de nuestra IA.")
 
@@ -719,7 +705,6 @@ elif page == "Valoración de Vehículos Usados (IA)":
 
         if submitted_val:
             with st.spinner("Analizando el mercado para tu vehículo..."):
-                # Current date is July 13, 2025 in Bogotá, Colombia
                 prompt_valuation = f"""
                 Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que la fecha actual es 13 de julio de 2025 y que el mercado es Colombia.
 
@@ -742,7 +727,7 @@ elif page == "Valoración de Vehículos Usados (IA)":
                 except Exception as e:
                     st.error(f"Lo siento, no pude generar la valoración en este momento. Por favor, inténtalo de nuevo. Error: {e}")
 
-elif page == "Asesor de Mantenimiento (IA)":
+elif st.session_state.current_sub_page == "Asesor de Mantenimiento (IA)":
     st.header("🔧 Asesor de Mantenimiento (IA)")
     st.info("Pregunta a nuestra IA sobre problemas de tu vehículo, mantenimiento recomendado o costos de reparación.")
 
@@ -775,7 +760,7 @@ elif page == "Asesor de Mantenimiento (IA)":
                     except Exception as e:
                         st.error(f"Lo siento, no pude generar la asesoría en este momento. Por favor, inténtalo de nuevo. Error: {e}")
 
-elif page == "Simulador de Escenarios Financieros (IA)":
+elif st.session_state.current_sub_page == "Simulador de Escenarios Financieros (IA)":
     st.header("🔮 Simulador de Escenarios Financieros (IA)")
     st.info("Explora cómo diferentes situaciones financieras podrían afectar tu préstamo automotriz con la ayuda de la IA.")
 
@@ -826,7 +811,7 @@ elif page == "Simulador de Escenarios Financieros (IA)":
             except Exception as e:
                 st.error(f"Lo siento, no pude simular el escenario en este momento. Por favor, inténtalo de nuevo. Error: {e}")
 
-elif page == "Calculadora de Impacto Ambiental":
+elif st.session_state.current_sub_page == "Calculadora de Impacto Ambiental":
     st.header("🌎 Calculadora de Impacto Ambiental")
     st.info("Estima la huella de carbono de diferentes vehículos y descubre opciones más sostenibles.")
 
@@ -893,7 +878,7 @@ elif page == "Calculadora de Impacto Ambiental":
                     st.write("- Asegúrate de cargar tu vehículo con energía de fuentes renovables si es posible (ej. paneles solares).")
                     st.write("- Sigue promoviendo la infraestructura de carga para vehículos eléctricos.")
 
-elif page == "Gamificación de Crédito":
+elif st.session_state.current_sub_page == "Gamificación de Crédito":
     st.header("🎮 Gamificación de tu Proceso de Crédito")
     st.info("Completa hitos en tu proceso de crédito para ganar puntos y beneficios exclusivos.")
 
@@ -974,7 +959,7 @@ elif page == "Gamificación de Crédito":
     st.markdown("---")
     st.info("Puntos y insignias son solo una simulación para demostrar la funcionalidad. Los beneficios reales se comunicarían oportunamente.")
 
-elif page == "Alertas de Vehículos":
+elif st.session_state.current_sub_page == "Alertas de Vehículos":
     st.header("🔔 Alertas de Vehículos")
     st.info("Configura alertas personalizadas y te notificaremos cuando vehículos que coincidan con tus criterios estén disponibles.")
 
@@ -1024,7 +1009,53 @@ elif page == "Alertas de Vehículos":
     else:
         st.write("Aún no tienes alertas configuradas. ¡Crea una para no perderte tu vehículo ideal!")
 
-elif page == "Portal de Clientes":
+elif st.session_state.current_sub_page == "Asistente AI":
+    st.header("🤖 Asistente AI")
+    st.write("¡Hola! Soy tu asistente de Finanzauto. ¿En qué puedo ayudarte hoy?")
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    for role, content in st.session_state.chat_history:
+        with st.chat_message(role):
+            st.markdown(content)
+
+    if prompt := st.chat_input("Escribe tu pregunta aquí..."):
+        st.session_state.chat_history.append(("user", prompt))
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Pensando..."):
+                try:
+                    gemini_messages = []
+                    for role, content in st.session_state.chat_history:
+                        if role == "user" and content == prompt:
+                            gemini_messages.append({"role": "user", "parts": [content]})
+                        elif role == "user":
+                            gemini_messages.append({"role": "user", "parts": [content]})
+                        elif role == "assistant":
+                            gemini_messages.append({"role": "model", "parts": [content]})
+                    
+                    if not gemini_messages:
+                         response = model.generate_content(prompt)
+                    else:
+                        if gemini_messages[-1]["role"] == "user" and gemini_messages[-1]["parts"][0] == prompt:
+                             chat_history_for_gemini = gemini_messages[:-1]
+                        else:
+                             chat_history_for_gemini = gemini_messages
+
+                        chat = model.start_chat(history=chat_history_for_gemini)
+                        response = chat.send_message(prompt)
+
+                    ai_response = response.text
+                    st.markdown(ai_response)
+                    st.session_state.chat_history.append(("assistant", ai_response))
+                except Exception as e:
+                    st.error(f"Lo siento, hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo. Error: {e}")
+                    st.session_state.chat_history.append(("assistant", "Lo siento, hubo un error al procesar tu solicitud."))
+
+elif st.session_state.current_sub_page == "Portal de Clientes":
     st.header("👤 Portal de Clientes")
     st.info("Un espacio personalizado para que los clientes gestionen sus créditos y vehículos.")
     st.write("Aquí los clientes podrían:")
@@ -1034,7 +1065,7 @@ elif page == "Portal de Clientes":
     st.markdown("- Actualizar su información de contacto.")
     st.markdown("- Recibir ofertas personalizadas de vehículos o refinanciamientos.")
 
-elif page == "Portal de Asesores":
+elif st.session_state.current_sub_page == "Portal de Asesores":
     st.header("💼 Portal de Asesores")
     st.info("Herramientas para que los asesores gestionen y den seguimiento a las solicitudes de los clientes.")
     st.write("Aquí los asesores podrían:")
@@ -1045,7 +1076,7 @@ elif page == "Portal de Asesores":
     st.markdown("- Enviar comunicaciones personalizadas a los clientes.")
     st.markdown("- Acceder a métricas de rendimiento y productividad.")
 
-elif page == "Blog":
+elif st.session_state.current_sub_page == "Blog":
     st.header("📰 Blog de Finanzauto")
     st.info("Artículos y noticias sobre el mundo automotriz, consejos financieros y novedades de Finanzauto.")
     st.write("Explora nuestros últimos posts:")
@@ -1066,7 +1097,7 @@ elif page == "Blog":
     st.button("Leer Más", key="blog3")
     st.markdown("---")
 
-elif page == "Soporte Multi-idioma":
+elif st.session_state.current_sub_page == "Soporte Multi-idioma":
     st.header("🌐 Soporte Multi-idioma")
     st.info("Selecciona el idioma de tu preferencia para la interfaz y el Asistente AI.")
 
