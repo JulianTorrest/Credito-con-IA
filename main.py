@@ -81,7 +81,7 @@ except Exception as e:
 # --- ChromaDB Setup ---
 
 # Función para obtener o crear la base de datos vectorial Chroma. Cacheada para eficiencia.
-@st.cache_resource
+@st.cache_resource(hash_funcs={GoogleGenerativeAIEmbeddings: lambda _: _.model}) # <-- ¡AQUÍ ESTÁ LA CORRECCIÓN!
 def get_vector_store(embeddings_model_param): # Aceptar el modelo de embeddings como parámetro
     """
     Carga una base de datos vectorial Chroma existente o crea una nueva si no existe.
