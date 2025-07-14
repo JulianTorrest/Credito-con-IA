@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import fitz # PyMuPDF for PDF processing
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI # ¡Importante! LangChain LLM
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 import sys
 from langchain_core.messages import HumanMessage
 from langchain_core.documents import Document # Importar Document para crear objetos con metadatos
@@ -18,29 +18,23 @@ __import__('pysqlite3')
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 # --- Configuración de la API de Gemini ---
-# La clave API se debe configurar en los 'Secrets' de tu app en Streamlit Cloud
-# bajo el nombre 'GOOGLE_API_KEY'.
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 except KeyError:
     st.error("⚠️ Error: La clave API de Gemini ('GOOGLE_API_KEY') no está configurada en los Secrets de Streamlit Cloud.")
     st.info("Por favor, ve a la configuración de tu app en Streamlit Cloud > Secrets y añade GOOGLE_API_KEY='tu_clave_aqui'")
-    st.stop() # Detiene la ejecución de la aplicación si la clave no se encuentra.
+    st.stop()
 
-# Configura la API de Google Generative AI con la clave obtenida
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # --- Constantes y Directorios ---
-# Define el directorio donde se almacenará la base de datos vectorial de ChromaDB.
 CHROMA_DB_DIR = "chroma_db"
-# Asegura que el directorio exista. Si no, lo crea.
 if not os.path.exists(CHROMA_DB_DIR):
     os.makedirs(CHROMA_DB_DIR)
 
 # --- Inicialización de Modelos Gemini (Global para toda la app) ---
 
 # Modelo de Embeddings para convertir texto en vectores. Cacheada para eficiencia.
-# 'models/embedding-001' es el modelo recomendado para embeddings.
 @st.cache_resource
 def get_embeddings_model():
     """
@@ -48,61 +42,43 @@ def get_embeddings_model():
     """
     return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-# Modelo de Lenguaje Grande (LLM) para la generación de respuestas generales (no RAG)
-# y para el Simulador de Escenarios, Asesor de Mantenimiento, Valoración, etc.
-# Usamos 'gemini-1.5-flash' como lo tenías originalmente para estas tareas rápidas.
+# ÚNICO Modelo de Lenguaje Grande (LLM) para TODAS las tareas (general y RAG).
+# Ahora siempre usamos 'gemini-1.5-flash'.
 @st.cache_resource
-def get_general_llm_model():
+def get_llm_model():
     """
-    Inicializa y devuelve el modelo de chat de Google Generative AI para tareas generales.
+    Inicializa y devuelve el modelo de chat de Google Generative AI para todas las tareas.
     """
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-# Modelo de Lenguaje Grande (LLM) para la generación de respuestas RAG. Cacheada para eficiencia.
-# Usamos 'gemini-1.5-pro' para las capacidades avanzadas de RAG.
-@st.cache_resource
-def get_rag_llm_model():
-    """
-    Inicializa y devuelve el modelo de chat de Google Generative AI para RAG (ChatGoogleGenerativeAI).
-    """
-    return ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3)
-
+    return ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3) # Usamos ChatGoogleGenerativeAI para consistencia con LangChain
 
 # Inicialización de modelos al inicio de la aplicación
 try:
-    general_llm_model = get_general_llm_model()
+    llm_model = get_llm_model() # Ahora solo un LLM para todo
     embeddings_model = get_embeddings_model()
-    rag_llm_model = get_rag_llm_model() # Nuevo LLM específico para RAG
 except Exception as e:
     st.error(f"❌ **Error al cargar los modelos Gemini:** {e}")
     st.info("Asegúrate de que tus modelos estén disponibles y que tu clave API sea correcta.")
-    st.stop() # Detiene la ejecución si los modelos no se pueden cargar.
+    st.stop()
 
 # --- ChromaDB Setup ---
 
-# Función para obtener o crear la base de datos vectorial Chroma. Cacheada para eficiencia.
-@st.cache_resource(hash_funcs={GoogleGenerativeAIEmbeddings: lambda _: _.model}) # <-- ¡AQUÍ ESTÁ LA CORRECCIÓN!
-def get_vector_store(embeddings_model_param): # Aceptar el modelo de embeddings como parámetro
+@st.cache_resource(hash_funcs={GoogleGenerativeAIEmbeddings: lambda _: _.model})
+def get_vector_store(embeddings_model_param):
     """
     Carga una base de datos vectorial Chroma existente o crea una nueva si no existe.
     Utiliza el modelo de embeddings configurado.
     """
     try:
-        # Intenta cargar la base de datos vectorial existente desde el directorio persistente.
         vector_store = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings_model_param)
-        # Verifica si la base de datos cargada contiene documentos.
         if vector_store._collection.count() == 0:
             st.warning("La base de datos vectorial está vacía. Por favor, carga y procesa documentos en la sección de 'Ingesta de Documentos (RAG)'.")
         else:
             st.success(f"Cargada base de datos vectorial existente de '{CHROMA_DB_DIR}' con {vector_store._collection.count()} documentos/fragmentos.")
     except Exception as e:
-        # Si ocurre un error al cargar (ej., directorio no existe, está vacío o corrupto), crea una nueva.
         st.info(f"Creando nueva base de datos vectorial en '{CHROMA_DB_DIR}'.")
-        # Es crucial inicializar Chroma con un embedding_function incluso si no hay textos iniciales.
         vector_store = Chroma(embedding_function=embeddings_model_param, persist_directory=CHROMA_DB_DIR)
     return vector_store
 
-# Inicialización de la base de datos vectorial con el modelo de embeddings.
 vector_store = get_vector_store(embeddings_model)
 
 # --- Funciones de Procesamiento de Documentos (RAG) ---
@@ -123,14 +99,11 @@ def get_text_chunks(text, file_name="unknown_document"):
     Divide el texto largo en fragmentos más pequeños (chunks) para el procesamiento.
     Cada chunk se convierte en un objeto Document con metadatos, incluyendo el nombre del archivo.
     """
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,      # Tamaño máximo de cada fragmento
-        chunk_overlap=200,    # Superposición entre fragmentos para mantener contexto
-        length_function=len   # Función para calcular la longitud de los fragmentos
+    text_splitter = RecursiveCharacterCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len
     )
-    # Divide el texto en fragmentos.
-    chunks = text_splitter.split_text(text)
-    # Crea una lista de objetos Document, cada uno con el contenido del fragmento y metadatos.
     documents = [Document(page_content=chunk, metadata={"source": file_name}) for chunk in chunks]
     return documents
 
@@ -157,45 +130,39 @@ def process_and_save_document(uploaded_file, vector_store):
             st.error("No se pudo extraer contenido del documento.")
             return False
 
-        # Obtiene los chunks como objetos Document, pasando el nombre del archivo como metadato.
         documents_with_metadata = get_text_chunks(raw_text, uploaded_file.name)
 
         st.write(f"Generando embeddings para {len(documents_with_metadata)} fragmentos de texto...")
-        # Añade los objetos Document (con metadatos) a la base de datos vectorial.
         vector_store.add_documents(documents_with_metadata)
-        vector_store.persist() # Asegura que los cambios se guarden en disco.
+        vector_store.persist()
         st.success(f"Documento '{uploaded_file.name}' procesado y guardado en la DB Vectorial.")
         return True
     except Exception as e:
         st.error(f"Error al procesar o guardar el documento: {e}")
         return False
 
-def get_rag_response(user_query, vector_store, llm_model_for_rag):
+def get_rag_response(user_query, vector_store, llm_model_for_rag): # Renombrado a llm_model_for_rag
     """
     Genera una respuesta utilizando la técnica RAG (Retrieval Augmented Generation).
     1. Busca documentos relevantes en la DB vectorial.
     2. Combina los documentos con la pregunta del usuario para formar un prompt contextual.
-    3. Envía el prompt al LLM (específico para RAG) para obtener una respuesta.
+    3. Envía el prompt al LLM para obtener una respuesta.
     """
     try:
-        # Recupera los 3 documentos más relevantes de la DB vectorial basados en la consulta del usuario.
-        docs = vector_store.similarity_search(user_query, k=3) 
-        
-        # Recopila los nombres de los archivos fuente únicos para mostrar al usuario.
+        docs = vector_store.similarity_search(user_query, k=3)
+
         unique_sources = set()
         for doc in docs:
             if 'source' in doc.metadata:
                 unique_sources.add(doc.metadata['source'])
-        
+
         if unique_sources:
             st.info(f"🔎 Documentos relevantes encontrados: {list(unique_sources)}")
         else:
             st.warning("🤷‍♀️ No se encontraron documentos relevantes en la base de datos para esta consulta. Respondiendo solo con conocimiento general.")
 
-        # Combina el contenido de los documentos recuperados en una única cadena de contexto.
         context = "\n\n".join([doc.page_content for doc in docs])
 
-        # Crea el prompt para el modelo Gemini, incluyendo instrucciones, el contexto y la pregunta.
         prompt = f"""
         Eres un asistente amable de Finanzauto especializado en responder preguntas sobre nuestros servicios y documentos internos.
         Utiliza **solo la siguiente información contextual** para responder a la pregunta.
@@ -208,12 +175,9 @@ def get_rag_response(user_query, vector_store, llm_model_for_rag):
         Pregunta del usuario: {user_query}
         """
 
-        # Genera la respuesta utilizando el modelo de lenguaje (LLM).
-        # Para ChatGoogleGenerativeAI, usa .invoke(prompt)
         response = llm_model_for_rag.invoke(prompt)
-        return response.content # Devuelve solo el contenido de la respuesta del LLM.
+        return response.content
     except Exception as e:
-        # Captura y muestra cualquier error que ocurra durante el proceso RAG.
         st.error(f"Lo siento, hubo un error al procesar tu solicitud con RAG. Por favor, asegúrate de que haya documentos en la DB y que el modelo de embeddings funcione. Error: {e}")
         return "No pude generar una respuesta debido a un error interno."
 
@@ -253,16 +217,16 @@ def generate_random_vehicles(num_vehicles=5000):
         make = random.choice(makes)
         model = random.choice(models_by_make.get(make, ["Generic Model"]))
         year = random.randint(2018, 2025)
-        
+
         base_price = random.randint(15000, 80000)
         if "BMW" in make or "Mercedes-Benz" in make or "Audi" in make or "Tesla" in make:
             base_price = random.randint(35000, 120000)
         price = base_price + (year - 2018) * random.uniform(500, 2000) + random.uniform(-1000, 1000)
         price = max(10000, price)
-        
+
         v_type = random.choice(vehicle_types)
         fuel = random.choice(fuel_types)
-        
+
         if v_type == "EV":
             fuel = "Electric"
             price = random.randint(35000, 90000)
@@ -311,9 +275,8 @@ st.title("🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento")
 if st.sidebar.button("Reiniciar Datos de la App (Desarrollo)"):
     st.session_state.clear()
     st.cache_data.clear()
-    st.cache_resource.clear() # Clear resource cache for models and DB
+    st.cache_resource.clear()
     
-    # Also clear ChromaDB directory for a full reset
     if os.path.exists(CHROMA_DB_DIR):
         import shutil
         shutil.rmtree(CHROMA_DB_DIR)
@@ -331,8 +294,8 @@ pages = {
     "Recomendador de Planes": "💡 Recomendador de Planes",
     "Catálogo de Vehículos": "🚗 Catálogo de Vehículos",
     "Comparador": "⚖️ Comparador de Vehículos",
-    "Ingesta de Documentos (RAG)": "📂 Ingesta de Documentos para RAG", # NEW PAGE
-    "Asistente AI (RAG)": "🤖 Asistente AI (RAG)", # Modified for RAG
+    "Ingesta de Documentos (RAG)": "📂 Ingesta de Documentos para RAG",
+    "Asistente AI (RAG)": "🤖 Asistente AI (RAG)",
     "Valoración de Vehículos Usados (IA)": "📈 Valoración de Vehículos Usados (IA)",
     "Asesor de Mantenimiento (IA)": "🔧 Asesor de Mantenimiento (IA)",
     "Simulador de Escenarios Financieros (IA)": "🔮 Simulador de Escenarios Financieros (IA)",
@@ -455,8 +418,6 @@ elif selected_page == "Solicitud de Crédito":
                 st.warning("Por favor, completa todos los campos obligatorios.")
             else:
                 st.success(f"Solicitud recibida para {first_name} {last_name}. Un asesor se pondrá en contacto pronto.")
-                # Nota: st.session_debts no está definido, probablemente un typo.
-                # Lo he ajustado para usar st.session_state.existing_debts
                 st.json({
                     "nombre": first_name,
                     "apellido": last_name,
@@ -496,11 +457,10 @@ elif selected_page == "Análisis Preliminar":
                     5. El total de deudas (existentes + pago estimado del vehículo) no debe superar el 60% del ingreso neto.
                     """
 
-                    estimated_monthly_payment = (desired_vehicle_price * 0.08 / 12) / (1 - (1 + 0.08 / 12)**-(60)) # 8% annual, 60 months
+                    estimated_monthly_payment = (desired_vehicle_price * 0.08 / 12) / (1 - (1 + 0.08 / 12)**-(60))
 
-                    # Detección de Fraude (IA) - placeholder
                     fraud_detection_result = "No se detectaron anomalías significativas (simulado)."
-                    if random.random() < 0.05: # 5% chance of simulated fraud
+                    if random.random() < 0.05:
                         fraud_detection_result = "Anomalía detectada: Posible inconsistencia en la relación ingresos/precio del vehículo. Requiere revisión manual."
 
                     prompt_for_gemini = f"""
@@ -519,9 +479,9 @@ elif selected_page == "Análisis Preliminar":
                     Además, incluye un apartado de 'Detección de Fraude (IA)' con el siguiente resultado: "{fraud_detection_result}".
                     """
                     
-                    response = general_llm_model.generate_content(prompt_for_gemini) # Usar general_llm_model
-                    ai_analysis = response.text
-                    st.session_state["ai_preliminary_analysis_output"] = ai_analysis # Store for gamification
+                    response = llm_model.invoke(prompt_for_gemini) # Usar el único LLM configurado
+                    ai_analysis = response.content # Usar .content para ChatGoogleGenerativeAI
+                    st.session_state["ai_preliminary_analysis_output"] = ai_analysis
 
                     st.subheader("Resultados del Análisis Preliminar de IA:")
                     st.markdown(ai_analysis)
@@ -568,18 +528,15 @@ elif selected_page == "Recomendador de Planes":
                     loan_amount = vehicle_value - initial_payment
                     disposable_income = monthly_income - monthly_expenses
                     
-                    # Dummy plans and their characteristics (simplified for prompt)
-                    # In a real app, these would come from a database/system
                     dummy_loan_plans_data = [
-                        {"name": "Plan Balance Ideal", "description": "Este plan está diseñado para un pago mensual equilibrado, ajustándose a tus ingresos y gastos, mientras mantiene la deuda manejable. Es la opción más sensata considerando tu preferencia por un balance.", "min_term": 48, "max_term": 72, "base_rate": 0.22, "priority_match": ["Cuota mensual baja", "Flexibilidad en pagos/refinanciamiento"], "income_factor": 0.35}, # 22% E.A.
-                        {"name": "Plan Pago Rápido", "description": "Si tu objetivo es reducir la deuda y minimizar los intereses totales, este plan te permite pagar más rápido con cuotas más altas pero un plazo menor.", "min_term": 24, "max_term": 48, "base_rate": 0.20, "priority_match": ["Pagar el préstamo rápidamente", "Bajas tasas de interés"], "income_factor": 0.45}, # 20% E.A.
-                        {"name": "Plan Flexi-Cuota", "description": "Con plazos extendidos y la opción de pagos extraordinarios, este plan ofrece máxima flexibilidad para adaptarse a cambios en tu situación financiera.", "min_term": 60, "max_term": 84, "base_rate": 0.25, "priority_match": ["Flexibilidad en pagos/refinanciamiento", "Cuota mensual baja"], "income_factor": 0.30}, # 25% E.A.
+                        {"name": "Plan Balance Ideal", "description": "Este plan está diseñado para un pago mensual equilibrado, ajustándose a tus ingresos y gastos, mientras mantiene la deuda manejable. Es la opción más sensata considerando tu preferencia por un balance.", "min_term": 48, "max_term": 72, "base_rate": 0.22, "priority_match": ["Cuota mensual baja", "Flexibilidad en pagos/refinanciamiento"], "income_factor": 0.35},
+                        {"name": "Plan Pago Rápido", "description": "Si tu objetivo es reducir la deuda y minimizar los intereses totales, este plan te permite pagar más rápido con cuotas más altas pero un plazo menor.", "min_term": 24, "max_term": 48, "base_rate": 0.20, "priority_match": ["Pagar el préstamo rápidamente", "Bajas tasas de interés"], "income_factor": 0.45},
+                        {"name": "Plan Flexi-Cuota", "description": "Con plazos extendidos y la opción de pagos extraordinarios, este plan ofrece máxima flexibilidad para adaptarse a cambios en tu situación financiera.", "min_term": 60, "max_term": 84, "base_rate": 0.25, "priority_match": ["Flexibilidad en pagos/refinanciamiento", "Cuota mensual baja"], "income_factor": 0.30},
                     ]
 
                     generated_plans_info = []
 
                     for plan_template in dummy_loan_plans_data:
-                        # Adjust rate based on credit history and new factors (Personalización de Tasas - IA)
                         adjusted_rate = plan_template["base_rate"]
                         if credit_history == "Excelente":
                             adjusted_rate -= 0.02
@@ -588,32 +545,27 @@ elif selected_page == "Recomendador de Planes":
                         elif credit_history == "Limitado/Sin historial":
                             adjusted_rate += 0.03
                         
-                        # Apply new factors for advanced personalization (dummy logic)
                         if job_stability_reco == "Empleado Fijo":
                             adjusted_rate -= 0.005
                         elif job_stability_reco == "Independiente":
                             adjusted_rate += 0.01
 
                         if vehicle_type_interest_reco == "Eléctrico":
-                            adjusted_rate -= 0.005 # Incentive for EVs
+                            adjusted_rate -= 0.005
 
-                        adjusted_rate = max(0.18, adjusted_rate) # Minimum rate
+                        adjusted_rate = max(0.18, adjusted_rate)
 
-                        # Calculate term based on priority and disposable income
-                        calculated_term_months = 60 # Default for Balance Ideal
+                        calculated_term_months = 60
 
                         if plan_template["name"] == "Plan Pago Rápido":
-                            # Try to find a term where payment is a higher percentage of income
-                            target_payment_ratio = 0.35 # Aim for 35% of disposable income
+                            target_payment_ratio = 0.35
                             target_payment = disposable_income * target_payment_ratio
                             
-                            # Add a check for target_payment to avoid division by zero or negative log argument
                             if target_payment <= 0:
-                                calculated_term_months = plan_template["max_term"] # Fallback to max term if target payment is too low/zero
+                                calculated_term_months = plan_template["max_term"]
                             else:
                                 monthly_rate = adjusted_rate / 12
                                 if monthly_rate > 0:
-                                    # Ensure the argument for log is positive
                                     log_arg = 1 - (monthly_rate * loan_amount) / target_payment
                                     if log_arg <= 0:
                                         calculated_term_months = plan_template["max_term"]
@@ -626,17 +578,14 @@ elif selected_page == "Recomendador de Planes":
                             calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
                             
                         elif plan_template["name"] == "Plan Flexi-Cuota":
-                            # Try to find a term where payment is a lower percentage of income
-                            target_payment_ratio = 0.25 # Aim for 25% of disposable income
+                            target_payment_ratio = 0.25
                             target_payment = disposable_income * target_payment_ratio
 
-                            # Add a check for target_payment to avoid division by zero or negative log argument
                             if target_payment <= 0:
                                 calculated_term_months = plan_template["max_term"]
                             else:
                                 monthly_rate = adjusted_rate / 12
                                 if monthly_rate > 0:
-                                    # Ensure the argument for log is positive
                                     log_arg = 1 - (monthly_rate * loan_amount) / target_payment
                                     if log_arg <= 0:
                                         calculated_term_months = plan_template["max_term"]
@@ -648,7 +597,6 @@ elif selected_page == "Recomendador de Planes":
                                     
                             calculated_term_months = max(plan_template["min_term"], min(plan_template["max_term"], calculated_term_months))
                         
-                        # Fallback for balance or if calculated term is out of range
                         if not (plan_template["min_term"] <= calculated_term_months <= plan_template["max_term"]):
                             calculated_term_months = random.randint(plan_template["min_term"], plan_template["max_term"])
 
@@ -742,8 +690,8 @@ elif selected_page == "Recomendador de Planes":
                     """
 
                     try:
-                        response = general_llm_model.generate_content(ai_prompt) # Usar general_llm_model
-                        ai_recommendations_markdown = response.text
+                        response = llm_model.invoke(ai_prompt) # Usar el único LLM configurado
+                        ai_recommendations_markdown = response.content
                         st.session_state["recommended_plans_output"] = ai_recommendations_markdown
                         
                     except Exception as e:
@@ -752,9 +700,7 @@ elif selected_page == "Recomendador de Planes":
         
     if "recommended_plans_output" in st.session_state and st.session_state["recommended_plans_output"]:
         st.subheader("Planes de Financiamiento Recomendados")
-        # Split the markdown by the "---" separator to get individual cards
         raw_cards = st.session_state["recommended_plans_output"].split("---")
-        # Filter out empty strings from splitting and strip whitespace
         processed_cards = [card.strip() for card in raw_cards if card.strip()]
         
         if processed_cards:
@@ -869,15 +815,10 @@ elif selected_page == "Ingesta de Documentos (RAG)":
 
         if st.button("Procesar y Guardar en DB Vectorial"):
             with st.spinner("Procesando documento y generando embeddings..."):
-                # Llamar a la función principal de procesamiento de documentos
                 success = process_and_save_document(uploaded_file, vector_store)
                 if success:
-                    # Limpiar la caché de recursos para asegurar que la base de datos se recargue
-                    # con los nuevos documentos la próxima vez que se acceda.
                     st.cache_resource.clear()
-                    # Forzar la re-inicialización de la DB para que el conteo se actualice inmediatamente.
-                    # Pasamos de nuevo el modelo de embeddings
-                    vector_store = get_vector_store(embeddings_model) 
+                    vector_store = get_vector_store(embeddings_model)
                 else:
                     st.error("Fallo al guardar el documento. Revisa los logs para más detalles.")
             
@@ -886,9 +827,7 @@ elif selected_page == "Ingesta de Documentos (RAG)":
     if current_doc_count > 0:
         st.write(f"Actualmente hay **{current_doc_count}** fragmentos de documentos en la base de datos vectorial.")
         
-        # Intenta obtener los nombres únicos de los documentos para mostrarlos
         try:
-            # Obtener todos los IDs y metadatos (puede ser lento con muchos documentos)
             all_data = vector_store._collection.get(include=['metadatas'])
             if all_data and 'metadatas' in all_data:
                 unique_sources = set(m.get('source', 'Desconocido') for m in all_data['metadatas'] if m)
@@ -925,8 +864,8 @@ elif selected_page == "Asistente AI (RAG)":
 
         with st.chat_message("assistant"):
             with st.spinner("Buscando en documentos y pensando..."):
-                # Llama a la función RAG, usando el LLM específico para RAG
-                ai_response = get_rag_response(prompt, vector_store, rag_llm_model)
+                # Llama a la función RAG, usando el LLM único
+                ai_response = get_rag_response(prompt, vector_store, llm_model) # Usar llm_model
                 st.markdown(ai_response)
                 st.session_state.chat_history.append(("assistant", ai_response))
 
@@ -949,7 +888,6 @@ elif selected_page == "Valoración de Vehículos Usados (IA)":
 
         if submitted_val:
             with st.spinner("Analizando el mercado para tu vehículo..."):
-                # Usar el modelo general para la valoración
                 prompt_valuation = f"""
                 Eres un tasador de vehículos para Finanzauto. Dada la siguiente información de un vehículo usado, estima su precio de mercado actual para venta o permuta. Considera que la fecha actual es {datetime.now().strftime('%d de %B de %Y')} y que el mercado es Colombia.
 
@@ -964,8 +902,8 @@ elif selected_page == "Valoración de Vehículos Usados (IA)":
                 Ofrece una valoración estimada como un rango de precios (ej. $X.XXX.XXX - $Y.YYY.YYY COP) y justifica tu estimación basándote en los factores proporcionados. También, menciona brevemente cualquier factor adicional que podría influir en el precio (ej. historial de accidentes, demanda del modelo). Utiliza valores realistas para el mercado colombiano.
                 """
                 try:
-                    response = general_llm_model.generate_content(prompt_valuation)
-                    valuation_result = response.text
+                    response = llm_model.invoke(prompt_valuation) # Usar el único LLM configurado
+                    valuation_result = response.content
                     st.subheader("Valoración Estimada por IA:")
                     st.markdown(valuation_result)
                     st.success("¡Esperamos que esta valoración te sea útil!")
@@ -986,7 +924,6 @@ elif selected_page == "Asesor de Mantenimiento (IA)":
                 st.warning("Por favor, ingresa el modelo de tu vehículo y describe tu pregunta.")
             else:
                 with st.spinner("Buscando la mejor asesoría para ti..."):
-                    # Usar el modelo general para la asesoría
                     prompt_maintenance = f"""
                     Eres un asesor experto en mantenimiento automotriz de Finanzauto. El cliente tiene un **{vehicle_make_model}** y su pregunta/problema es: "{problem_description}".
 
@@ -998,8 +935,8 @@ elif selected_page == "Asesor de Mantenimiento (IA)":
                     5.  Una advertencia para buscar un profesional si el problema es serio.
                     """
                     try:
-                        response = general_llm_model.generate_content(prompt_maintenance)
-                        maintenance_advice = response.text
+                        response = llm_model.invoke(prompt_maintenance) # Usar el único LLM configurado
+                        maintenance_advice = response.content
                         st.subheader("Asesoría de Mantenimiento de IA:")
                         st.markdown(maintenance_advice)
                     except Exception as e:
@@ -1032,7 +969,6 @@ elif selected_page == "Simulador de Escenarios Financieros (IA)":
 
     if simulate_button:
         with st.spinner("Analizando tu escenario financiero..."):
-            # Usar el modelo general para la simulación
             prompt_scenario = f"""
             Eres un experto en finanzas personales de Finanzauto. Necesito que simules el impacto de un escenario financiero en un préstamo automotriz existente.
 
@@ -1049,8 +985,8 @@ elif selected_page == "Simulador de Escenarios Financieros (IA)":
             Por favor, explica claramente el impacto esperado en la cuota mensual, el plazo restante, y el interés total pagado, si aplica. Ofrece consejos prácticos sobre cómo manejar este escenario o aprovecharlo. Utiliza formato de moneda de Colombia ($ pesos con puntos para miles y comas para decimales, ej. $1.000.000,00).
             """
             try:
-                response = general_llm_model.generate_content(prompt_scenario)
-                scenario_analysis = response.text
+                response = llm_model.invoke(prompt_scenario) # Usar el único LLM configurado
+                scenario_analysis = response.content
                 st.subheader("Análisis de Escenario por IA:")
                 st.markdown(scenario_analysis)
             except Exception as e:
@@ -1065,7 +1001,6 @@ elif selected_page == "Calculadora de Impacto Ambiental":
             env_vehicle_type = st.selectbox("Tipo de Vehículo", ["Gasolina", "Diésel", "Híbrido", "Eléctrico"], key="env_vehicle_type")
             env_mileage_year = st.number_input("Kilometraje Anual Estimado (km)", min_value=1000, value=15000, step=1000, key="env_mileage_year")
         with col_env2:
-            # Adjust label and default value based on vehicle type
             if env_vehicle_type == "Eléctrico":
                 env_fuel_efficiency = st.number_input("Consumo de Energía (Km/kWh)", min_value=0.1, value=5.0, step=0.1, key="env_fuel_efficiency_ev")
                 env_avg_price_fuel = st.number_input("Precio promedio de la Electricidad (COP/kWh)", min_value=100, value=600, step=10, key="env_avg_price_fuel_ev")
@@ -1079,30 +1014,24 @@ elif selected_page == "Calculadora de Impacto Ambiental":
             co2_emissions_kg = 0
             annual_fuel_cost = 0
 
-            # Dummy values for CO2 per liter/kWh (approximate for Colombia)
-            # CO2 emissions factors (simplified, real data varies)
-            # Gasoline: ~2.3 kg CO2/liter
-            # Diesel: ~2.6 kg CO2/liter
-            # Electricity (Colombia mix, very roughly): ~0.2-0.4 kg CO2/kWh (can be lower due to hydro)
             if env_fuel_efficiency <= 0:
                 st.error("El consumo de combustible/energía debe ser mayor que cero.")
             else:
                 if env_vehicle_type == "Gasolina":
                     liters_consumed = env_mileage_year / env_fuel_efficiency
-                    co2_emissions_kg = liters_consumed * 2.3 # kg CO2 per liter
+                    co2_emissions_kg = liters_consumed * 2.3
                     annual_fuel_cost = liters_consumed * env_avg_price_fuel
                 elif env_vehicle_type == "Diésel":
                     liters_consumed = env_mileage_year / env_fuel_efficiency
-                    co2_emissions_kg = liters_consumed * 2.6 # kg CO2 per liter
+                    co2_emissions_kg = liters_consumed * 2.6
                     annual_fuel_cost = liters_consumed * env_avg_price_fuel
                 elif env_vehicle_type == "Híbrido":
-                    # Assume 30% reduction for hybrid
                     liters_consumed = env_mileage_year / env_fuel_efficiency
-                    co2_emissions_kg = liters_consumed * 2.3 * 0.7 # kg CO2 per liter (reduced)
+                    co2_emissions_kg = liters_consumed * 2.3 * 0.7
                     annual_fuel_cost = liters_consumed * env_avg_price_fuel
                 elif env_vehicle_type == "Eléctrico":
                     kwh_consumed = env_mileage_year / env_fuel_efficiency
-                    co2_emissions_kg = kwh_consumed * 0.3 # kg CO2 per kWh (based on Colombian grid mix, simplified)
+                    co2_emissions_kg = kwh_consumed * 0.3
                     annual_fuel_cost = kwh_consumed * env_avg_price_fuel
 
                 st.subheader("Resultados del Impacto Ambiental y Costo Anual:")
@@ -1136,9 +1065,165 @@ elif selected_page == "Gamificación de Crédito":
     
     col_game1, col_game2 = st.columns(2)
 
-    # Milestones and their conditions (dummy, tied to session state variables)
     milestones = [
         {"name": "Perfil Completo", "desc": "Completa toda tu información en la 'Solicitud de Crédito'.", "points": 50, "condition_key": "app_first_name", "badge": "🌟 Perfil Pro"},
         {"name": "Análisis Preliminar Realizado", "desc": "Utiliza la herramienta de 'Análisis Preliminar'.", "points": 75, "condition_key": "ai_preliminary_analysis_output", "badge": "🧠 Analista Novato"},
         {"name": "Plan Recomendado", "desc": "Obtén una recomendación de plan en 'Recomendador de Planes'.", "points": 100, "condition_key": "recommended_plans_output", "badge": "💡 Planificador Experto"},
+        {"name": "Solicitud Aprobada (Demo)", "desc": "Tu solicitud de crédito ha sido aprobada (simulado).", "points": 200, "condition_key": "dummy_loan_approved", "badge": "✅ Crédito Aprobado"},
     ]
+
+    points_to_add = 0
+    badges_to_add = []
+
+    for milestone in milestones:
+        is_completed = False
+        if milestone["condition_key"] == "app_first_name":
+            if st.session_state.get("app_first_name") and st.session_state.get("app_last_name"):
+                is_completed = True
+        elif milestone["condition_key"] == "ai_preliminary_analysis_output":
+            if st.session_state.get("ai_preliminary_analysis_output"):
+                is_completed = True
+        elif milestone["condition_key"] == "recommended_plans_output":
+            if st.session_state.get("recommended_plans_output"):
+                is_completed = True
+        elif milestone["condition_key"] == "dummy_loan_approved":
+            if any(app['status'] == "Aprobada" for app in st.session_state.dummy_user_data['loan_applications']):
+                is_completed = True
+        
+        if is_completed and milestone["badge"] not in st.session_state.gamification_badges:
+            points_to_add += milestone["points"]
+            badges_to_add.append(milestone["badge"])
+            st.toast(f"¡Ganaste {milestone['points']} puntos por '{milestone['name']}' y la insignia '{milestone['badge']}'!", icon="🎉")
+    
+    if points_to_add > 0 or badges_to_add:
+        st.session_state.gamification_points += points_to_add
+        st.session_state.gamification_badges.extend(badges_to_add)
+        st.rerun()
+
+    for milestone in milestones:
+        is_current_completed = False
+        if milestone["condition_key"] == "app_first_name":
+            if st.session_state.get("app_first_name") and st.session_state.get("app_last_name"):
+                is_current_completed = True
+        elif milestone["condition_key"] == "ai_preliminary_analysis_output":
+            if st.session_state.get("ai_preliminary_analysis_output"):
+                is_current_completed = True
+        elif milestone["condition_key"] == "recommended_plans_output":
+            if st.session_state.get("recommended_plans_output"):
+                is_current_completed = True
+        elif milestone["condition_key"] == "dummy_loan_approved":
+            if any(app['status'] == "Aprobada" for app in st.session_state.dummy_user_data['loan_applications']):
+                is_current_completed = True
+
+        status_emoji = "✅ Completado" if is_current_completed else "⏳ Pendiente"
+        
+        with col_game1:
+            st.markdown(f"**{milestone['name']}**")
+            st.write(f"- {milestone['desc']}")
+        with col_game2:
+            st.write(f"Puntos: {milestone['points']} | Estado: {status_emoji}")
+
+    st.subheader("Tus Insignias:")
+    if st.session_state.gamification_badges:
+        st.write(", ".join(st.session_state.gamification_badges))
+    else:
+        st.write("Aún no tienes insignias. ¡Empieza a completar hitos!")
+
+    st.markdown("---")
+    st.info("Puntos y insignias son solo una simulación para demostrar la funcionalidad. Los beneficios reales se comunicarían oportunamente.")
+
+elif selected_page == "Alertas de Vehículos":
+    st.info("Configura alertas personalizadas y te notificaremos cuando vehículos que coincidan con tus criterios estén disponibles.")
+
+    st.subheader("Configurar Nueva Alerta")
+    with st.form("vehicle_alert_form"):
+        alert_make = st.selectbox("Marca Preferida", options=["Cualquiera"] + sorted(list(set([v['make'] for v in DUMMY_VEHICLES]))), key="alert_make")
+        alert_model = st.text_input("Modelo Específico (opcional)", key="alert_model")
+        alert_max_price = st.number_input("Precio Máximo ($)", min_value=0, value=50000, step=1000, key="alert_max_price")
+        alert_type = st.multiselect("Tipos de Vehículo", options=sorted(list(set([v['type'] for v in DUMMY_VEHICLES]))), key="alert_type")
+        alert_email = st.text_input("Correo Electrónico para notificaciones", value=st.session_state.dummy_user_data["email"], key="alert_email")
+
+        submitted_alert = st.form_submit_button("Crear Alerta")
+
+        if submitted_alert:
+            if not alert_email:
+                st.warning("Por favor, ingresa un correo electrónico para las notificaciones.")
+            else:
+                new_alert = {
+                    "make": alert_make,
+                    "model": alert_model if alert_model else "Cualquiera",
+                    "max_price": alert_max_price,
+                    "type": alert_type if alert_type else "Cualquiera",
+                    "email": alert_email,
+                    "status": "Activa",
+                    "created_date": datetime.now().strftime("%Y-%m-%d")
+                }
+                if 'user_alerts' not in st.session_state:
+                    st.session_state.user_alerts = []
+                st.session_state.user_alerts.append(new_alert)
+                st.success("¡Alerta creada con éxito! Te notificaremos si encontramos vehículos que coincidan.")
+                
+    st.subheader("Tus Alertas Activas")
+    if 'user_alerts' in st.session_state and st.session_state.user_alerts:
+        for i, alert in enumerate(st.session_state.user_alerts):
+            st.markdown(f"**Alerta #{i+1}**")
+            st.write(f"- Marca: {alert['make']} | Modelo: {alert['model']}")
+            st.write(f"- Precio Máximo: ${alert['max_price']:,.2f} | Tipo(s): {', '.join(alert['type']) if isinstance(alert['type'], list) else alert['type']}")
+            st.write(f"- Estado: {alert['status']} | Creada: {alert['created_date']}")
+            if alert['status'] == "Activa":
+                if st.button(f"Desactivar Alerta {i+1}", key=f"deactivate_alert_{i}"):
+                    st.session_state.user_alerts[i]["status"] = "Inactiva"
+                    st.warning(f"Alerta #{i+1} desactivada.")
+                    st.rerun()
+            else:
+                st.info("Esta alerta está inactiva.")
+            st.markdown("---")
+    else:
+        st.write("Aún no tienes alertas configuradas. ¡Crea una para no perderte tu vehículo ideal!")
+
+elif selected_page == "Portal de Clientes":
+    st.info("Un espacio personalizado para que los clientes gestionen sus créditos y vehículos.")
+    st.write("Aquí los clientes podrían:")
+    st.markdown("- Ver el estado de sus solicitudes de crédito.")
+    st.markdown("- Acceder a documentos de sus préstamos.")
+    st.markdown("- Ver el historial de pagos y próximos vencimientos.")
+    st.markdown("- Actualizar su información de contacto.")
+    st.markdown("- Recibir ofertas personalizadas de vehículos o refinanciamientos.")
+
+elif selected_page == "Portal de Asesores":
+    st.info("Herramientas para que los asesores gestionen y den seguimiento a las solicitudes de los clientes.")
+    st.write("Aquí los asesores podrían:")
+    st.markdown("- Ver un listado de todas las solicitudes de crédito (nuevas, en revisión, aprobadas).")
+    st.markdown("- Acceder a los detalles de cada solicitud, incluyendo el análisis preliminar de IA.")
+    st.markdown("- Cargar documentos adicionales solicitados a los clientes.")
+    st.markdown("- Aprobar o rechazar solicitudes, con opciones para justificar la decisión.")
+    st.markdown("- Enviar comunicaciones personalizadas a los clientes.")
+    st.markdown("- Acceder a métricas de rendimiento y productividad.")
+
+elif selected_page == "Blog":
+    st.info("Artículos y noticias sobre el mundo automotriz, consejos financieros y novedades de Finanzauto.")
+    st.write("Explora nuestros últimos posts:")
+    st.markdown("---")
+    st.markdown("#### **Guía Completa para Comprar tu Primer Auto Usado**")
+    st.write("Aprende todo lo que necesitas saber para hacer una compra inteligente.")
+    st.write("_Publicado el: 10 de Julio, 2025_")
+    st.button("Leer Más", key="blog1")
+    st.markdown("---")
+    st.markdown("#### **5 Razones por las que un Vehículo Eléctrico Podría Ser tu Mejor Inversión**")
+    st.write("Descubre los beneficios ambientales y económicos de la movilidad eléctrica.")
+    st.write("_Publicado el: 1 de Julio, 2025_")
+    st.button("Leer Más", key="blog2")
+    st.markdown("---")
+    st.markdown("#### **Cómo Mejorar tu Historial Crediticio para Obtener Mejores Tasas**")
+    st.write("Consejos prácticos para fortalecer tu perfil financiero.")
+    st.write("_Publicado el: 20 de Junio, 2025_")
+    st.button("Leer Más", key="blog3")
+    st.markdown("---")
+
+elif selected_page == "Soporte Multi-idioma":
+    st.info("Selecciona el idioma de tu preferencia para la interfaz y el Asistente AI.")
+
+    selected_language = st.selectbox("Idioma de la Interfaz", options=["Español", "English", "Português"], key="app_language")
+
+    st.success(f"Idioma de la interfaz establecido a: **{selected_language}**.")
+    st.write("Nota: La implementación completa del multi-idioma (traducción de todos los textos y respuestas de la IA) es una funcionalidad compleja que requiere integración profunda y servicios de traducción para el modelo de IA. Esta es una demostración conceptual.")
