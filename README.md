@@ -1,4 +1,3 @@
-# Credito-con-IA
 # 🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento con IA
 
 ![Finanzauto Logo](https://media.licdn.com/dms/image/v2/D4E0BAQG5TGatl4y1xA/company-logo_200_200/company-logo_200_200/0/1733493384307/finanzautocol_logo?e=2147483647&v=beta&t=Jsru4_8NEYo03Ca5nhxPCFDHCULciXr4NCi-5stILKk)
@@ -33,6 +32,20 @@ Finanzauto es una aplicación interactiva desarrollada con Streamlit y potenciad
 * **ChromaDB:** Base de datos vectorial persistente para almacenar y buscar embeddings de documentos.
 * **PyMuPDF (fitz):** Para la extracción de texto de documentos PDF.
 * **pysqlite3:** Para asegurar la compatibilidad de SQLite con ChromaDB en entornos como Streamlit Cloud.
+
+## 🏛️ Explicación de Decisiones Arquitectónicas y Stack Tecnológico
+
+El diseño de Finanzauto se centra en la **rapidez de desarrollo**, la **interactividad de la interfaz de usuario** y la **potencia de la inteligencia artificial**, manteniendo a la vez la **simplicidad en el despliegue**.
+
+* **Streamlit para la UI:** Elegido por su capacidad de construir aplicaciones web complejas y reactivas con puro Python, lo que acelera significativamente el ciclo de desarrollo y permite a los desarrolladores de IA e Ingenieros de Datos crear prototipos rápidamente sin necesidad de conocimientos profundos de desarrollo web frontend.
+* **Google Gemini (Flash) como Core IA:** Se optó por los modelos Gemini de Google por su rendimiento robusto y su integración sencilla. Específicamente, el modelo `gemini-1.5-flash` fue seleccionado para todas las operaciones (embeddings y LLM para RAG y otras funcionalidades) debido a su **eficiencia en costos y alta velocidad de respuesta**, crucial para una experiencia de usuario fluida en una aplicación interactiva.
+* **LangChain para Orquestación de LLM:** Este framework se utiliza para abstraer las complejidades de interactuar con los Modelos de Lenguaje Grandes y construir cadenas de procesamiento. Facilita la implementación de la Arquitectura RAG (Retrieval Augmented Generation), conectando los LLMs con la base de datos vectorial de manera eficiente y escalable.
+* **ChromaDB como Base de Datos Vectorial:** Se eligió ChromaDB por su facilidad de uso, su capacidad de persistir datos localmente (lo que simplifica la gestión de la base de datos en entornos como Streamlit Cloud al no requerir un servidor de base de datos externo) y su excelente integración con LangChain para la gestión de embeddings y la búsqueda de similitud. La inclusión de `pysqlite3` es una medida preventiva para asegurar la compatibilidad con el entorno de ejecución de Streamlit Cloud.
+* **Optimización de Rendimiento con Caching de Streamlit:** El uso de `@st.cache_resource` y `@st.cache_data` es una decisión arquitectónica clave para evitar recargar modelos costosos o recalcular datos intensivos en cada interacción del usuario, mejorando drásticamente la velocidad y eficiencia de la aplicación.
+* **Gestión Segura de Credenciales:** La utilización de `st.secrets` para manejar la clave API de Google es una práctica de seguridad fundamental, asegurando que las credenciales sensibles no se expongan en el código fuente.
+* **Modularidad del Código:** La aplicación está estructurada en funciones claras y modulares, lo que facilita la legibilidad, el mantenimiento y la futura expansión de nuevas características.
+
+Esta combinación de herramientas permite que Finanzauto sea una solución potente, ágil y de fácil despliegue para el sector de financiamiento automotriz.
 
 ## 🚀 Cómo Empezar
 
