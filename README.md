@@ -1,8 +1,7 @@
 # Credito-con-IA
 # 🚗 Finanzauto: Tu Portal de Vehículos y Financiamiento con IA
 
-![Finanzauto Logo/Banner](https://via.placeholder.com/1200x300/F0F2F6/000000?text=Finanzauto+AI+-+Cr%C3%A9dito+Vehicular+Inteligente)
-*(Aquí puedes reemplazar la imagen con un banner real o el logo de tu aplicación)*
+![Finanzauto Logo](https://media.licdn.com/dms/image/v2/D4E0BAQG5TGatl4y1xA/company-logo_200_200/company-logo_200_200/0/1733493384307/finanzautocol_logo?e=2147483647&v=beta&t=Jsru4_8NEYo03Ca5nhxPCFDHCULciXr4NCi-5stILKk)
 
 Finanzauto es una aplicación interactiva desarrollada con Streamlit y potenciada por la Inteligencia Artificial de Google Gemini, diseñada para revolucionar la experiencia de financiamiento automotriz. Ofrece un conjunto de herramientas inteligentes que asisten a los usuarios y asesores en el proceso de compra, venta, financiamiento y gestión de vehículos, desde la simulación de créditos hasta la valoración de autos usados y la asistencia en mantenimiento.
 
