@@ -85,3 +85,7 @@ GOOGLE_API_KEY="TU_CLAVE_API_DE_GEMINI_AQUI"
 streamlit run main.py
 La aplicación se abrirá automáticamente en tu navegador web (normalmente en http://localhost:8501).
 
+🌐 Despliegue en Streamlit Cloud (¡En Vivo!)
+La aplicación ya está desplegada y disponible públicamente en Streamlit Cloud. Puedes acceder a ella a través del siguiente enlace:
+
+Acceder a Finanzauto en Streamlit Cloud
