@@ -44,14 +44,14 @@ Sigue estos pasos para configurar y ejecutar Finanzauto en tu máquina local:
 git clone [https://github.com/JulianTorrest/Credito-con-IA.git](https://github.com/JulianTorrest/Credito-con-IA.git)
 cd Credito-con-IA
 
-2. Crea un Entorno Virtual (Recomendado)
+### 2. Crea un Entorno Virtual (Recomendado)
 python -m venv venv
 # En Windows:
 .\venv\Scripts\activate
 # En macOS/Linux:
 source venv/bin/activate
 
-3. Instala las Dependencias
+### 3. Instala las Dependencias
 pip install -r requirements.txt
 
 streamlit
@@ -64,9 +64,9 @@ PyMuPDF
 pysqlite3
 
 
-4. Configura tu Clave API de Google Gemini
+### 4. Configura tu Clave API de Google Gemini
 # .streamlit/secrets.toml
 GOOGLE_API_KEY="TU_CLAVE_API_DE_GEMINI_AQUI"
 
-5. Ejecuta la Aplicación Streamlit
+### 5. Ejecuta la Aplicación Streamlit
 streamlit run main.py
