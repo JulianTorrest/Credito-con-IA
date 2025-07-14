@@ -70,3 +70,5 @@ GOOGLE_API_KEY="TU_CLAVE_API_DE_GEMINI_AQUI"
 
 ### 5. Ejecuta la Aplicación Streamlit
 streamlit run main.py
+La aplicación se abrirá automáticamente en tu navegador web (normalmente en http://localhost:8501).
+
